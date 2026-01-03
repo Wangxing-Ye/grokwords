@@ -117,6 +117,87 @@ function App() {
   const [showImageModal, setShowImageModal] = useState(false)
   const [currentWordName, setCurrentWordName] = useState<string>('')
   const [currentWordId, setCurrentWordId] = useState<number | null>(null)
+  const [showVoiceModal, setShowVoiceModal] = useState(false)
+  const [currentVoiceWord, setCurrentVoiceWord] = useState<string>('')
+  const [voiceWs, setVoiceWs] = useState<WebSocket | null>(null)
+  const [isVoiceConnected, setIsVoiceConnected] = useState(false)
+  const [voiceMessages, setVoiceMessages] = useState<string[]>([])
+  const [isRecording, setIsRecording] = useState(false)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioQueueRef = useRef<Float32Array[]>([])
+  const microphoneStreamRef = useRef<MediaStream | null>(null)
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null)
+  const isProcessingQueueRef = useRef<boolean>(false)
+
+  // Decode and play received base64 audio
+  const playAudio = (base64: string) => {
+    if (!audioContextRef.current) {
+      console.error('Audio context not initialized')
+      return
+    }
+
+    try {
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      
+      // Convert to Int16Array (little-endian PCM16)
+      const int16 = new Int16Array(bytes.buffer.byteLength / 2)
+      const dataView = new DataView(bytes.buffer)
+      for (let i = 0; i < int16.length; i++) {
+        int16[i] = dataView.getInt16(i * 2, true) // true = little-endian
+      }
+      
+      const float32 = new Float32Array(int16.length)
+      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0
+
+      audioQueueRef.current.push(float32)
+      if (!isProcessingQueueRef.current) processQueue()
+    } catch (error) {
+      console.error('Error decoding audio:', error)
+    }
+  }
+
+  const processQueue = async () => {
+    if (!audioContextRef.current) {
+      console.error('Audio context not available for processing')
+      isProcessingQueueRef.current = false
+      return
+    }
+
+    if (audioQueueRef.current.length === 0) {
+      isProcessingQueueRef.current = false
+      return
+    }
+
+    try {
+      // Resume audio context if suspended (required by browser autoplay policy)
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
+        console.log('Audio context resumed')
+      }
+
+      const float32Data = audioQueueRef.current.shift()!
+      if (float32Data.length === 0) {
+        processQueue() // Skip empty chunks
+        return
+      }
+
+      const buffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000)
+      const channelData = buffer.getChannelData(0)
+      channelData.set(float32Data)
+
+      const source = audioContextRef.current.createBufferSource()
+      source.buffer = buffer
+      source.connect(audioContextRef.current.destination)
+      source.start(0)
+      isProcessingQueueRef.current = true
+      source.onended = () => processQueue()
+    } catch (error) {
+      console.error('Error processing audio queue:', error)
+      isProcessingQueueRef.current = false
+    }
+  }
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -156,6 +237,267 @@ function App() {
       }
     }
   }, [words, currentWordId, showImageModal])
+
+  // Handle voice modal WebSocket connection
+  useEffect(() => {
+    if (showVoiceModal && !voiceWs) {
+      const apiKey = localStorage.getItem('grokwords_apiKey') || ''
+      if (!apiKey) {
+        alert('Please set your API key in Settings first.')
+        setShowVoiceModal(false)
+        return
+      }
+
+      // For browser WebSocket, we need to fetch an ephemeral token first
+      // Browser WebSocket doesn't support custom headers
+      const connectWebSocket = async () => {
+        try {
+          setVoiceMessages((prev) => [...prev, 'Fetching authentication token...'])
+          
+          // Fetch ephemeral token from xAI
+          const tokenResponse = await fetch('https://api.x.ai/v1/realtime/client_secrets', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              expires_after: { seconds: 300 }, // 5 minutes
+            }),
+          })
+
+          if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text()
+            console.error('Failed to get ephemeral token:', errorText)
+            setVoiceMessages((prev) => [...prev, `Error: Failed to authenticate. ${errorText}`])
+            return
+          }
+
+          const tokenData = await tokenResponse.json()
+          console.log('Token data:', tokenData)
+          const ephemeralToken = tokenData.value
+          console.log('Ephemeral token:', ephemeralToken)
+
+          if (!ephemeralToken) {
+            setVoiceMessages((prev) => [...prev, 'Error: No token received from server.'])
+            return
+          }
+
+          // Connect to WebSocket using ephemeral token with subprotocols
+          const ws = new WebSocket('wss://api.x.ai/v1/realtime', ['realtime', `xai-insecure-api-key.${ephemeralToken}`])
+
+          ws.onopen = () => {
+            console.log('Connected to voice server.')
+            setIsVoiceConnected(true)
+            setVoiceMessages((prev) => [...prev, 'Connected to voice server.'])
+
+            // Configure the session
+            const sessionConfig = {
+              type: 'session.update',
+              session: {
+                modalities: ['text', 'audio'],
+                instructions: `You are a helpful English vocabulary learning assistant. Help the user practice the word "${currentVoiceWord}".`,
+                voice: 'ara',
+                input_audio_format: 'pcm16',
+                output_audio_format: 'pcm16',
+                input_audio_transcription: { model: 'whisper-1' },
+                turn_detection: { type: 'server_vad' },
+              },
+            }
+            ws.send(JSON.stringify(sessionConfig))
+
+            // Initialize audio context for playback
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+              sampleRate: 24000,
+            })
+          }
+
+          ws.onmessage = (event: MessageEvent) => {
+            try {
+              const msg = JSON.parse(event.data)
+              console.log('Received:', msg.type)
+              
+              if (msg.type === 'response.output_audio.delta' && msg.delta) {
+                // Decode and play received base64 audio
+                playAudio(msg.delta)
+              }
+
+              if (msg.type === 'response.output_audio_transcript.delta' && msg.delta) {
+                // Handle text responses
+                setVoiceMessages((prev) => {
+                  const lastMessage = prev[prev.length - 1]
+                  if (lastMessage && lastMessage.startsWith('Grok: ')) {
+                    return [...prev.slice(0, -1), `Grok: ${lastMessage.substring(6)}${msg.delta}`]
+                  }
+                  return [...prev, `Grok: ${msg.delta}`]
+                })
+              }
+
+              if (msg.type === 'conversation.item.input_audio_transcription.completed' && msg.transcript) {
+                // Handle user transcript (what the user said)
+                setVoiceMessages((prev) => {
+                  const lastMessage = prev[prev.length - 1]
+                  if (lastMessage && lastMessage.startsWith('You: ')) {
+                    return [...prev.slice(0, -1), `You: ${lastMessage.substring(5)}${msg.transcript}`]
+                  }
+                  return [...prev, `You: ${msg.transcript}`]
+                })
+              }
+
+              if (msg.type === 'response.done') {
+                // Response complete - queue will continue processing
+                console.log('Response done')
+              }
+
+              if (msg.type === 'error') {
+                setVoiceMessages((prev) => [...prev, `Error: ${msg.error?.message || 'Unknown error'}`])
+              }
+
+              // Handle other events: conversation.item.created, etc.
+            } catch (error) {
+              console.error('Error parsing voice message:', error)
+            }
+          }
+
+      ws.onerror = (error: Event) => {
+        console.error('WebSocket error:', error)
+        setVoiceMessages((prev) => [...prev, 'Connection error occurred.'])
+      }
+
+      ws.onclose = () => {
+        console.log('Voice connection closed.')
+        setIsVoiceConnected(false)
+        setVoiceWs(null)
+        if (audioContextRef.current) {
+          audioContextRef.current.close()
+          audioContextRef.current = null
+        }
+      }
+
+          setVoiceWs(ws)
+        } catch (error) {
+          console.error('Error connecting to voice server:', error)
+          setVoiceMessages((prev) => [...prev, `Error: ${error instanceof Error ? error.message : 'Failed to connect'}`])
+        }
+      }
+
+      connectWebSocket()
+    }
+
+    return () => {
+      if (voiceWs) {
+        voiceWs.close()
+        setVoiceWs(null)
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+        audioContextRef.current = null
+      }
+      if (microphoneStreamRef.current) {
+        microphoneStreamRef.current.getTracks().forEach(track => track.stop())
+        microphoneStreamRef.current = null
+      }
+      if (audioProcessorRef.current) {
+        audioProcessorRef.current.disconnect()
+        audioProcessorRef.current = null
+      }
+      setIsRecording(false)
+    }
+  }, [showVoiceModal, currentVoiceWord])
+
+  const handleVoiceSend = (text: string) => {
+    if (!voiceWs || !isVoiceConnected) {
+      alert('Not connected to voice server.')
+      return
+    }
+
+    setVoiceMessages((prev) => [...prev, `You: ${text}`])
+
+    // Send user message
+    const event = {
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: text }],
+      },
+    }
+    voiceWs.send(JSON.stringify(event))
+
+    // Request response
+    const responseEvent = {
+      type: 'response.create',
+    }
+    voiceWs.send(JSON.stringify(responseEvent))
+  }
+
+  const handleStartVoiceInput = async () => {
+    try {
+      // Resume audio context if suspended (required for browser autoplay policy)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
+        console.log('Audio context resumed on user interaction')
+      }
+
+      if (microphoneStreamRef.current) {
+        // Stop existing stream
+        microphoneStreamRef.current.getTracks().forEach(track => track.stop())
+        if (audioProcessorRef.current) {
+          audioProcessorRef.current.disconnect()
+        }
+        microphoneStreamRef.current = null
+        audioProcessorRef.current = null
+        setIsRecording(false)
+        setVoiceMessages((prev) => [...prev, 'Microphone deactivated. Click again to start speaking...'])
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 24000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        }
+      })
+      microphoneStreamRef.current = stream
+      setIsRecording(true)
+
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 24000,
+      })
+      const source = audioContext.createMediaStreamSource(stream)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1)
+
+      processor.onaudioprocess = (e) => {
+        if (voiceWs && isVoiceConnected && voiceWs.readyState === WebSocket.OPEN) {
+          const inputData = e.inputBuffer.getChannelData(0)
+          // Convert Float32Array to PCM16
+          const pcm16 = new Int16Array(inputData.length)
+          for (let i = 0; i < inputData.length; i++) {
+            const s = Math.max(-1, Math.min(1, inputData[i]))
+            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+          }
+          // Convert to base64
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)))
+          const audioEvent = {
+            type: 'input_audio_buffer.append',
+            audio: base64,
+          }
+          voiceWs.send(JSON.stringify(audioEvent))
+        }
+      }
+
+      source.connect(processor)
+      processor.connect(audioContext.destination)
+      audioProcessorRef.current = processor
+
+      setVoiceMessages((prev) => [...prev, 'Microphone activated. Start speaking...'])
+    } catch (error) {
+      console.error('Error accessing microphone:', error)
+      alert('Could not access microphone. Please check permissions.')
+    }
+  }
 
   const handleLevelSelect = (value: string) => {
     setSelectedLevel(value)
@@ -551,6 +893,7 @@ function App() {
               <th>IMAGE</th>
               <th>X</th>
               <th>SHARE</th>
+              <th>Dialogue</th>
             </tr>
           </thead>
           <tbody>
@@ -762,6 +1105,36 @@ function App() {
                           <circle cx="18" cy="19" r="3" />
                           <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
                           <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                      </button>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                  <td>
+                    {word.example && word.example.trim() ? (
+                      <button
+                        className="x-button"
+                        title="Open dialogue"
+                        onClick={() => {
+                          setCurrentVoiceWord(word.word)
+                          setShowVoiceModal(true)
+                        }}
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                         </svg>
                       </button>
                     ) : (
@@ -1099,6 +1472,119 @@ function App() {
             </div>
             <div className="image-modal-body">
               <img src={generatedImageUrl} alt="Generated" className="generated-image" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVoiceModal && (
+        <div className="modal-overlay" onClick={() => setShowVoiceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <h2>Voice Practice: {currentVoiceWord}</h2>
+              </div>
+              <button
+                className="modal-close-button"
+                onClick={() => {
+                  if (voiceWs) {
+                    voiceWs.close()
+                    setVoiceWs(null)
+                  }
+                  if (microphoneStreamRef.current) {
+                    microphoneStreamRef.current.getTracks().forEach(track => track.stop())
+                    microphoneStreamRef.current = null
+                  }
+                  if (audioProcessorRef.current) {
+                    audioProcessorRef.current.disconnect()
+                    audioProcessorRef.current = null
+                  }
+                  setIsRecording(false)
+                  setShowVoiceModal(false)
+                  setVoiceMessages([])
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M15 5L5 15M5 5l10 10" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ 
+                  padding: '1rem', 
+                  backgroundColor: '#f3f4f6', 
+                  borderRadius: '8px',
+                  minHeight: '200px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  marginBottom: '1rem'
+                }}>
+                  {voiceMessages.length === 0 ? (
+                    <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
+                      {isVoiceConnected ? 'Connected. Click the microphone button to start speaking.' : 'Connecting...'}
+                    </div>
+                  ) : (
+                    voiceMessages.map((msg, index) => (
+                      <div key={index} style={{ marginBottom: '0.5rem', padding: '0.5rem' }}>
+                        <div style={{ 
+                          fontWeight: msg.startsWith('You:') ? '500' : '400',
+                          color: msg.startsWith('You:') ? '#3b82f6' : '#111827'
+                        }}>
+                          {msg}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                <button
+                  onClick={handleStartVoiceInput}
+                  style={{
+                    padding: '0.75rem',
+                    backgroundColor: isRecording ? '#ef4444' : (isVoiceConnected ? '#3b82f6' : '#9ca3af'),
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: isVoiceConnected ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  disabled={!isVoiceConnected}
+                  title={isRecording ? 'Stop recording' : 'Start voice input'}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </button>
+              </div>
+
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'center' }}>
+                Status: {isVoiceConnected ? 'Connected' : 'Disconnected'}
+              </div>
             </div>
           </div>
         </div>
