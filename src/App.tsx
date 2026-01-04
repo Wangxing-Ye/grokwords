@@ -24,89 +24,15 @@ const levels = [
 
 function App() {
   const [words, setWords] = useState<Word[]>([
-    {
-      id: 5,
-      word: 'Construct',
-      level: 1,
-      levelLabel: '1 (Basic)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: false,
-    },
-    {
-      id: 6,
-      word: 'Diligent',
-      level: 2,
-      levelLabel: '2 (Medium)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: false,
-    },
-    {
-      id: 1,
-      word: 'Ephemeral',
-      level: 3,
-      levelLabel: '3 (Advanced)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: true,
-    },
-    {
-      id: 7,
-      word: 'Fortitude',
-      level: 3,
-      levelLabel: '3 (Advanced)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: false,
-    },
-    {
-      id: 4,
-      word: 'Mellifluous',
-      level: 4,
-      levelLabel: '4 (Professional)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: false,
-    },
-    {
-      id: 8,
-      word: 'Nuance',
-      level: 3,
-      levelLabel: '3 (Advanced)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: false,
-    },
-    {
-      id: 2,
-      word: 'Resilient',
-      level: 2,
-      levelLabel: '2 (Medium)',
-      pos: '',
-      phonetic: "",
-      definition: '',
-      example: '',
-      revealed: true,
-    },
+
   ])
 
   const [selectedLevel, setSelectedLevel] = useState<string>('all')
   const [isLevelsDropdownOpen, setIsLevelsDropdownOpen] = useState(false)
   const levelsDropdownRef = useRef<HTMLDivElement>(null)
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const itemsPerPage = 100
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [llmProvider, setLlmProvider] = useState('xai')
   const [apiKey, setApiKey] = useState('')
@@ -128,6 +54,79 @@ function App() {
   const microphoneStreamRef = useRef<MediaStream | null>(null)
   const audioProcessorRef = useRef<ScriptProcessorNode | null>(null)
   const isProcessingQueueRef = useRef<boolean>(false)
+  const wordsLoadedRef = useRef<boolean>(false)
+  const dbRef = useRef<IDBDatabase | null>(null)
+
+  // Initialize IndexedDB
+  const initDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+      if (dbRef.current) {
+        resolve(dbRef.current)
+        return
+      }
+
+      const request = indexedDB.open('GrokWordsDB', 1)
+
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        dbRef.current = request.result
+        resolve(request.result)
+      }
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        if (!db.objectStoreNames.contains('words')) {
+          const objectStore = db.createObjectStore('words', { keyPath: 'id' })
+          objectStore.createIndex('word', 'word', { unique: false })
+        }
+      }
+    })
+  }
+
+  // Save word to IndexedDB
+  const saveWordToDB = async (word: Word) => {
+    try {
+      const db = await initDB()
+      const transaction = db.transaction(['words'], 'readwrite')
+      const objectStore = transaction.objectStore('words')
+      await objectStore.put(word)
+    } catch (error) {
+      console.error('Error saving word to IndexedDB:', error)
+    }
+  }
+
+  // Save multiple words to IndexedDB
+  const saveWordsToDB = async (wordsToSave: Word[]) => {
+    try {
+      const db = await initDB()
+      const transaction = db.transaction(['words'], 'readwrite')
+      const objectStore = transaction.objectStore('words')
+      
+      for (const word of wordsToSave) {
+        await objectStore.put(word)
+      }
+    } catch (error) {
+      console.error('Error saving words to IndexedDB:', error)
+    }
+  }
+
+  // Load all words from IndexedDB
+  const loadWordsFromDB = async (): Promise<Word[]> => {
+    try {
+      const db = await initDB()
+      const transaction = db.transaction(['words'], 'readonly')
+      const objectStore = transaction.objectStore('words')
+      
+      return new Promise((resolve, reject) => {
+        const request = objectStore.getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    } catch (error) {
+      console.error('Error loading words from IndexedDB:', error)
+      return []
+    }
+  }
 
   // Decode and play received base64 audio
   const playAudio = (base64: string) => {
@@ -198,6 +197,93 @@ function App() {
       isProcessingQueueRef.current = false
     }
   }
+
+  // Load word data from IndexedDB and word lists from text files on first page load
+  useEffect(() => {
+    if (wordsLoadedRef.current) return
+    wordsLoadedRef.current = true
+
+    const loadWordList = async (filename: string, level: number, levelLabel: string) => {
+      try {
+        const response = await fetch(`/words/${filename}`)
+        if (!response.ok) {
+          console.warn(`Could not load ${filename}:`, response.statusText)
+          return []
+        }
+        const text = await response.text()
+        const lines = text.split('\n').filter(line => line.trim().length > 0)
+        
+        return lines.map((word, index) => ({
+          id: Date.now() + index + Math.random(), // Generate unique ID
+          word: word.trim(),
+          level: level,
+          levelLabel: levelLabel,
+          pos: '',
+          phonetic: '',
+          definition: '',
+          example: '',
+          revealed: false,
+        }))
+      } catch (error) {
+        console.error(`Error loading ${filename}:`, error)
+        return []
+      }
+    }
+
+    const loadAllData = async () => {
+      // First, load words from IndexedDB (these have saved data)
+      const dbWords = await loadWordsFromDB()
+      
+      // Then load word lists from text files
+      const [level1Words, level2Words] = await Promise.all([
+        loadWordList('words3000.txt', 1, '1 (Basic)'),
+        loadWordList('words2000.txt', 2, '2 (Medium)'),
+      ])
+
+      // Merge all words
+      // Create a Map of existing words by word text (case-insensitive) for quick lookup
+      const wordMap = new Map<string, Word>()
+      
+      // Add words from IndexedDB first (they have saved data)
+      dbWords.forEach(w => {
+        wordMap.set(w.word.toLowerCase(), w)
+      })
+      
+      // Add words from text files, but don't overwrite if they exist in DB
+      const allTextWords = [...level1Words, ...level2Words]
+      const newWordsToSave: Word[] = []
+      
+      allTextWords.forEach(w => {
+        const key = w.word.toLowerCase()
+        if (!wordMap.has(key)) {
+          // New word from text file - add it and mark for saving
+          wordMap.set(key, w)
+          newWordsToSave.push(w)
+        } else {
+          // If word exists in DB, merge: keep DB data but update level if different
+          const existing = wordMap.get(key)!
+          if (w.level !== existing.level) {
+            // Update level if the text file has a different level
+            const updated = { ...existing, level: w.level, levelLabel: w.levelLabel }
+            wordMap.set(key, updated)
+            newWordsToSave.push(updated)
+          }
+        }
+      })
+      
+      // Convert map back to array and set words
+      const allWords = Array.from(wordMap.values())
+      setWords(allWords)
+      
+      // Save new words from text files to IndexedDB
+      if (newWordsToSave.length > 0) {
+        await saveWordsToDB(newWordsToSave)
+        console.log(`Saved ${newWordsToSave.length} new words to IndexedDB`)
+      }
+    }
+
+    loadAllData()
+  }, [])
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -590,7 +676,14 @@ function App() {
                 }
               : w
           )
-          console.log('Updated word:', updated.find(w => w.id === wordId))
+          const updatedWord = updated.find(w => w.id === wordId)
+          console.log('Updated word:', updatedWord)
+          
+          // Save to IndexedDB
+          if (updatedWord) {
+            saveWordToDB(updatedWord)
+          }
+          
           return updated
         })
 
@@ -626,9 +719,16 @@ function App() {
             if (example) {
               // Remove quotes from both sides if present
               example = example.trim()
+              console.log('Example:', example)
+
               if ((example.startsWith('"') && example.endsWith('"')) || 
                   (example.startsWith("'") && example.endsWith("'"))) {
                 example = example.slice(1, -1).trim()
+              }
+
+              // Replace double newlines with single newline
+              if (example.includes('\n\n')) {
+                example = example.replace(/\n\n/g, '\n')
               }
 
               // If example doesn't include '\n', replace the period before the translation with '\n'
@@ -646,9 +746,17 @@ function App() {
 
               // Update the word's example
               setWords((prevWords) => {
-                return prevWords.map((w) =>
+                const updated = prevWords.map((w) =>
                   w.id === wordId ? { ...w, example: example } : w
                 )
+                const updatedWord = updated.find(w => w.id === wordId)
+                
+                // Save to IndexedDB
+                if (updatedWord) {
+                  saveWordToDB(updatedWord)
+                }
+                
+                return updated
               })
             }
           }
@@ -691,6 +799,9 @@ function App() {
     setLoadingImageId(wordId)
 
     try {
+      const prompt = `A colorful, playful English vocabulary learning card for the word "${word}", vertical layout, cheerful sky-blue background of ${nounKeyWords}. The word "${word}" appears in large bold letters with soft gradient fill and drop shadow, definition section with text "${englishDefinition}" below. A sample sentence section with text: "${englishExample}" below the definition section. Use readable, classroom-friendly typography with good spacing.`
+      console.log(prompt)
+
       const response = await fetch('https://api.x.ai/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -700,7 +811,7 @@ function App() {
         },
         body: JSON.stringify({
           model: 'grok-2-image-1212',
-          prompt: `A colorful, playful English vocabulary learning card for the word "${word}", vertical layout, cheerful sky-blue background. The word "${word}" appears in large bold letters with soft gradient fill and drop shadow, definition section with text "${englishDefinition}" below. A sample sentence section with text: "${englishExample}" below the definition section. Use readable, classroom-friendly typography with good spacing. Include ${nounKeyWords}, lighthearted, sparkly accents, paper plane flying across, and playful abstract shapes.`,
+          prompt: prompt,
         }),
       })
 
@@ -727,7 +838,14 @@ function App() {
         const updated = prevWords.map((w) =>
           w.id === wordId ? { ...w, imageUrl: imageUrl } : w
         )
-        console.log('Updated words:', updated.find(w => w.id === wordId))
+        const updatedWord = updated.find(w => w.id === wordId)
+        console.log('Updated words:', updatedWord)
+        
+        // Save to IndexedDB
+        if (updatedWord) {
+          saveWordToDB(updatedWord)
+        }
+        
         return updated
       })
     } catch (error) {
@@ -750,6 +868,17 @@ function App() {
 
     return levelMatch && searchMatch
   })
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedLevel, searchQuery])
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredWords.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedWords = filteredWords.slice(startIndex, endIndex)
 
   const getLevelColor = (level: number) => {
     switch (level) {
@@ -897,7 +1026,7 @@ function App() {
             </tr>
           </thead>
           <tbody>
-            {filteredWords.map((word) => {
+            {paginatedWords.map((word) => {
               return (
                 <tr key={word.id}>
                   <td>
@@ -1150,8 +1279,47 @@ function App() {
 
       <footer className="footer">
         <div className="footer-text">
-          Showing {filteredWords.length} of 10,000 words based on your filters.
+          Showing {startIndex + 1}-{Math.min(endIndex, filteredWords.length)} of {filteredWords.length} words (Page {currentPage} of {totalPages || 1})
         </div>
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1rem', justifyContent: 'center' }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: currentPage === 1 ? '#d1d5db' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: currentPage === totalPages ? '#d1d5db' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </footer>
 
       {isSettingsOpen && (
@@ -1482,7 +1650,7 @@ function App() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
             <div className="modal-header">
               <div className="modal-header-left">
-                <h2>Voice Practice: {currentVoiceWord}</h2>
+                <h2>Dialogue Practice: {currentVoiceWord}</h2>
               </div>
               <button
                 className="modal-close-button"
