@@ -15,11 +15,11 @@ interface Word {
 }
 
 const levels = [
-  { value: 'all', label: 'All Levels' },
+  { value: 'all', label: 'All' },
+  { value: 'grokked', label: 'Grokked' },
   { value: '1', label: 'Level 1 (Basic)' },
-  { value: '2', label: 'Level 2 (Medium)' },
+  { value: '2', label: 'Level 2 (Intermediate)' },
   { value: '3', label: 'Level 3 (Advanced)' },
-  { value: '4', label: 'Level 4 (Professional)' },
 ]
 
 function App() {
@@ -34,6 +34,10 @@ function App() {
   const [currentPage, setCurrentPage] = useState<number>(1)
   const itemsPerPage = 100
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [showProgressModal, setShowProgressModal] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [confirmWordId, setConfirmWordId] = useState<number | null>(null)
+  const [confirmWordName, setConfirmWordName] = useState<string>('')
   const [llmProvider, setLlmProvider] = useState('xai')
   const [apiKey, setApiKey] = useState('')
   const [nativeLanguage, setNativeLanguage] = useState('english')
@@ -198,34 +202,60 @@ function App() {
     }
   }
 
-  // Load word data from IndexedDB and word lists from text files on first page load
+  // Load word data from IndexedDB and CSV file on first page load
   useEffect(() => {
     if (wordsLoadedRef.current) return
     wordsLoadedRef.current = true
 
-    const loadWordList = async (filename: string, level: number, levelLabel: string) => {
+    const getLevelFromCEFR = (cefr: string): { level: number; levelLabel: string } => {
+      const cefrUpper = cefr.toUpperCase()
+      if (cefrUpper === 'A1' || cefrUpper === 'A2') {
+        return { level: 1, levelLabel: '1 (Basic)' }
+      } else if (cefrUpper === 'B1' || cefrUpper === 'B2') {
+        return { level: 2, levelLabel: '2 (Intermediate)' }
+      } else if (cefrUpper === 'C1' || cefrUpper === 'C2') {
+        return { level: 3, levelLabel: '3 (Advanced)' }
+      }
+      // Default to level 1 if CEFR is not recognized
+      return { level: 1, levelLabel: '1 (Basic)' }
+    }
+
+    const loadCSVWords = async () => {
       try {
-        const response = await fetch(`/words/${filename}`)
+        const response = await fetch('/words/ENGLISH_CERF_WORDS.csv')
         if (!response.ok) {
-          console.warn(`Could not load ${filename}:`, response.statusText)
+          console.warn('Could not load ENGLISH_CERF_WORDS.csv:', response.statusText)
           return []
         }
         const text = await response.text()
         const lines = text.split('\n').filter(line => line.trim().length > 0)
         
-        return lines.map((word, index) => ({
-          id: Date.now() + index + Math.random(), // Generate unique ID
-          word: word.trim(),
-          level: level,
-          levelLabel: levelLabel,
-          pos: '',
-          phonetic: '',
-          definition: '',
-          example: '',
-          revealed: false,
-        }))
+        // Skip header line
+        const dataLines = lines.slice(1)
+        
+        return dataLines.map((line, index) => {
+          const [headword, cefr] = line.split(',').map(s => s.trim())
+          
+          // If headword has '/', use the first word
+          const word = headword.includes('/') ? headword.split('/')[0] : headword
+          
+          // Get level from CEFR
+          const { level, levelLabel } = getLevelFromCEFR(cefr)
+          
+          return {
+            id: Date.now() + index + Math.random(), // Generate unique ID
+            word: word.trim(),
+            level: level,
+            levelLabel: levelLabel,
+            pos: '',
+            phonetic: '',
+            definition: '',
+            example: '',
+            revealed: false,
+          }
+        })
       } catch (error) {
-        console.error(`Error loading ${filename}:`, error)
+        console.error('Error loading ENGLISH_CERF_WORDS.csv:', error)
         return []
       }
     }
@@ -234,11 +264,8 @@ function App() {
       // First, load words from IndexedDB (these have saved data)
       const dbWords = await loadWordsFromDB()
       
-      // Then load word lists from text files
-      const [level1Words, level2Words] = await Promise.all([
-        loadWordList('words3000.txt', 1, '1 (Basic)'),
-        loadWordList('words2000.txt', 2, '2 (Medium)'),
-      ])
+      // Then load words from CSV file
+      const csvWords = await loadCSVWords()
 
       // Merge all words
       // Create a Map of existing words by word text (case-insensitive) for quick lookup
@@ -249,21 +276,20 @@ function App() {
         wordMap.set(w.word.toLowerCase(), w)
       })
       
-      // Add words from text files, but don't overwrite if they exist in DB
-      const allTextWords = [...level1Words, ...level2Words]
+      // Add words from CSV file, but don't overwrite if they exist in DB
       const newWordsToSave: Word[] = []
       
-      allTextWords.forEach(w => {
+      csvWords.forEach(w => {
         const key = w.word.toLowerCase()
         if (!wordMap.has(key)) {
-          // New word from text file - add it and mark for saving
+          // New word from CSV - add it and mark for saving
           wordMap.set(key, w)
           newWordsToSave.push(w)
         } else {
           // If word exists in DB, merge: keep DB data but update level if different
           const existing = wordMap.get(key)!
           if (w.level !== existing.level) {
-            // Update level if the text file has a different level
+            // Update level if the CSV has a different level
             const updated = { ...existing, level: w.level, levelLabel: w.levelLabel }
             wordMap.set(key, updated)
             newWordsToSave.push(updated)
@@ -275,7 +301,7 @@ function App() {
       const allWords = Array.from(wordMap.values())
       setWords(allWords)
       
-      // Save new words from text files to IndexedDB
+      // Save new words from CSV file to IndexedDB
       if (newWordsToSave.length > 0) {
         await saveWordsToDB(newWordsToSave)
         console.log(`Saved ${newWordsToSave.length} new words to IndexedDB`)
@@ -599,6 +625,32 @@ function App() {
     }
   }
 
+  const handleNoPOS = async (wordId: number) => {
+    // Update the word's POS to '-' in IndexedDB
+    setWords((prevWords) => {
+      const updated = prevWords.map((w) =>
+        w.id === wordId
+          ? {
+              ...w,
+              pos: '-',
+            }
+          : w
+      )
+      const updatedWord = updated.find(w => w.id === wordId)
+      
+      // Save to IndexedDB
+      if (updatedWord) {
+        saveWordToDB(updatedWord)
+      }
+      
+      return updated
+    })
+    
+    setShowConfirmDialog(false)
+    setConfirmWordId(null)
+    setConfirmWordName('')
+  }
+
   const handleGrokWord = async (wordId: number, word: string) => {
     const apiKey = localStorage.getItem('grokwords_apiKey') || ''
     const nativeLanguage = localStorage.getItem('grokwords_nativeLanguage') || 'english'
@@ -858,8 +910,15 @@ function App() {
 
   const filteredWords = words.filter((word) => {
     // Filter by level
-    const levelMatch =
-      selectedLevel === 'all' || word.level.toString() === selectedLevel
+    let levelMatch = false
+    if (selectedLevel === 'all') {
+      levelMatch = true
+    } else if (selectedLevel === 'grokked') {
+      // Show words that have been grokked (have definition)
+      levelMatch = !!(word.definition && word.definition.trim().length > 0)
+    } else {
+      levelMatch = word.level.toString() === selectedLevel
+    }
 
     // Filter by search query (words that start with the search text)
     const searchMatch =
@@ -888,8 +947,6 @@ function App() {
         return 'level-medium'
       case 3:
         return 'level-advanced'
-      case 4:
-        return 'level-pro'
       default:
         return 'level-basic'
     }
@@ -904,7 +961,7 @@ function App() {
           </div>
           <div className="logo-text">
             <h1>GrokWords</h1>
-            <p>Grok 10,000 English Words with xAI</p>
+            <p>Grok 1000 English Words with xAI</p>
           </div>
         </div>
         <div className="header-right">
@@ -914,7 +971,7 @@ function App() {
               onClick={() => setIsLevelsDropdownOpen(!isLevelsDropdownOpen)}
             >
               {levels.find((l) => l.value === selectedLevel)?.label ||
-                'All Levels'}
+                'All'}
               <svg
                 width="12"
                 height="12"
@@ -989,6 +1046,24 @@ function App() {
           </div>
           <button
             className="settings-button"
+            onClick={() => setShowProgressModal(true)}
+            title="View progress"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+          </button>
+          <button
+            className="settings-button"
             onClick={() => setIsSettingsOpen(true)}
           >
             <svg
@@ -1020,9 +1095,9 @@ function App() {
               <th>DEFINITION</th>
               <th>EXAMPLE</th>
               <th>IMAGE</th>
+              <th>Dialogue</th>
               <th>X</th>
               <th>SHARE</th>
-              <th>Dialogue</th>
             </tr>
           </thead>
           <tbody>
@@ -1059,30 +1134,46 @@ function App() {
                     {word.pos && word.pos.trim() ? (
                       <span className="pos-badge">{word.pos}</span>
                     ) : (
-                      <button
-                        className="grok-button"
-                        title="Generate POS, phonetic, and definition"
-                        onClick={() => handleGrokWord(word.id, word.word)}
-                        disabled={loadingGrokId === word.id}
-                      >
-                        {loadingGrokId === word.id ? (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 18 18"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="spinning-icon"
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          className="grok-button"
+                          title="Generate POS, phonetic, and definition"
+                          onClick={() => handleGrokWord(word.id, word.word)}
+                          disabled={loadingGrokId === word.id}
+                        >
+                          {loadingGrokId === word.id ? (
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 18 18"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="spinning-icon"
+                            >
+                              <circle cx="9" cy="9" r="7" strokeDasharray="12" strokeDashoffset="3" />
+                            </svg>
+                          ) : (
+                            'Grok'
+                          )}
+                        </button>
+                        {loadingGrokId !== word.id && (
+                          <button
+                            className="grok-button"
+                            title="Mark as understood"
+                            onClick={() => {
+                              setConfirmWordId(word.id)
+                              setConfirmWordName(word.word)
+                              setShowConfirmDialog(true)
+                            }}
+                            style={{ backgroundColor: '#10b981' }}
                           >
-                            <circle cx="9" cy="9" r="7" strokeDasharray="12" strokeDashoffset="3" />
-                          </svg>
-                        ) : (
-                          'Grok'
+                            ✓
+                          </button>
                         )}
-                      </button>
+                      </div>
                     )}
                   </td>
                   <td>{word.phonetic}</td>
@@ -1168,6 +1259,38 @@ function App() {
                     {word.example && word.example.trim() ? (
                       <button
                         className="x-button"
+                        title="Open dialogue"
+                        onClick={() => {
+                          setCurrentVoiceWord(word.word)
+                          setShowVoiceModal(true)
+                        }}
+                      >
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M6 10c-1.5-1-3-1-4.5 0v4c1.5-1 3-1 4.5 0" />
+                          <path d="M6 10c0-1.5 1-2.5 2.5-2.5s2.5 1 2.5 2.5" />
+                          <path d="M6 14c0 1.5 1 2.5 2.5 2.5s2.5-1 2.5-2.5" />
+                          <line x1="11.5" y1="11.5" x2="14.5" y2="10" />
+                          <line x1="11.5" y1="11.5" x2="14.5" y2="11.5" />
+                          <line x1="11.5" y1="11.5" x2="14.5" y2="13" />
+                        </svg>
+                      </button>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                  <td>
+                    {word.example && word.example.trim() ? (
+                      <button
+                        className="x-button"
                         title="View X posts containing this word"
                         onClick={() => {
                           const searchUrl = `https://x.com/search?q=${encodeURIComponent(word.word)}&src=typed_query&f=live`
@@ -1240,36 +1363,6 @@ function App() {
                       ''
                     )}
                   </td>
-                  <td>
-                    {word.example && word.example.trim() ? (
-                      <button
-                        className="x-button"
-                        title="Open dialogue"
-                        onClick={() => {
-                          setCurrentVoiceWord(word.word)
-                          setShowVoiceModal(true)
-                        }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                          <circle cx="9" cy="7" r="4" />
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                        </svg>
-                      </button>
-                    ) : (
-                      ''
-                    )}
-                  </td>
                 </tr>
               )
             })}
@@ -1320,7 +1413,199 @@ function App() {
             </button>
           </div>
         )}
+        <div style={{ 
+          display: 'flex', 
+          gap: '1.5rem', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          marginTop: '1.5rem',
+          paddingTop: '1.5rem',
+          borderTop: '1px solid #e5e7eb'
+        }}>
+          <a
+            href="https://github.com/Wangxing-Ye/grokwords"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              color: '#6b7280',
+              textDecoration: 'none',
+              transition: 'color 0.15s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ marginRight: '0.5rem' }}
+            >
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+          </a>
+          <a
+            href="https://x.com/wilsonye2025"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              color: '#6b7280',
+              textDecoration: 'none',
+              transition: 'color 0.15s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ marginRight: '0.5rem' }}
+            >
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </a>
+        </div>
       </footer>
+
+      {showProgressModal && (
+        <div className="modal-overlay" onClick={() => setShowProgressModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <h2>Progress</h2>
+              </div>
+              <button
+                className="modal-close-button"
+                onClick={() => setShowProgressModal(false)}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M15 5L5 15M5 5l10 10" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {(() => {
+                const grokkedWordsCount = words.filter(w => w.definition && w.definition.trim().length > 0).length
+                const progress = Math.min((grokkedWordsCount / 1000) * 100, 100)
+                
+                return (
+                  <div style={{ padding: '1rem' }}>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#111827', marginBottom: '1rem', textAlign: 'center' }}>
+                      {grokkedWordsCount} / 1000 words grokked
+                    </div>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ 
+                        width: '100%', 
+                        height: '32px', 
+                        backgroundColor: '#e5e7eb', 
+                        borderRadius: '16px',
+                        overflow: 'hidden',
+                        position: 'relative'
+                      }}>
+                        <div style={{
+                          width: `${progress}%`,
+                          height: '100%',
+                          backgroundColor: '#3b82f6',
+                          borderRadius: '16px',
+                          transition: 'width 0.3s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontWeight: '600',
+                          fontSize: '0.875rem'
+                        }}>
+                          {progress >= 10 ? `${Math.round(progress)}%` : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
+                      {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmDialog && (
+        <div className="modal-overlay" onClick={() => setShowConfirmDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <h2>Confirm Understanding</h2>
+              </div>
+              <button
+                className="modal-close-button"
+                onClick={() => {
+                  setShowConfirmDialog(false)
+                  setConfirmWordId(null)
+                  setConfirmWordName('')
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M15 5L5 15M5 5l10 10" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{ padding: '1rem', textAlign: 'center' }}>
+                <p style={{ fontSize: '1.125rem', color: '#111827', marginBottom: '1.5rem' }}>
+                  Do you really understand this word - <strong>{confirmWordName}</strong>?
+                </p>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                  <button
+                    className="grok-button"
+                    onClick={() => {
+                      if (confirmWordId !== null) {
+                        handleNoPOS(confirmWordId)
+                      }
+                    }}
+                    style={{ backgroundColor: '#10b981', minWidth: '100px' }}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    className="grok-button"
+                    onClick={() => {
+                      setShowConfirmDialog(false)
+                      setConfirmWordId(null)
+                      setConfirmWordName('')
+                    }}
+                    style={{ backgroundColor: '#6b7280', minWidth: '100px' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isSettingsOpen && (
         <div className="modal-overlay" onClick={() => setIsSettingsOpen(false)}>
