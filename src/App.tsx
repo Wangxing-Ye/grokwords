@@ -222,9 +222,9 @@ function App() {
 
     const loadCSVWords = async () => {
       try {
-        const response = await fetch('/words/ENGLISH_CERF_WORDS.csv')
+        const response = await fetch('/words/ENGLISH_CERF_WORDS_EXTENDED.csv')
         if (!response.ok) {
-          console.warn('Could not load ENGLISH_CERF_WORDS.csv:', response.statusText)
+          console.warn('Could not load ENGLISH_CERF_WORDS_EXTENDED.csv:', response.statusText)
           return []
         }
         const text = await response.text()
@@ -255,7 +255,7 @@ function App() {
           }
         })
       } catch (error) {
-        console.error('Error loading ENGLISH_CERF_WORDS.csv:', error)
+        console.error('Error loading ENGLISH_CERF_WORDS_EXTENDED.csv:', error)
         return []
       }
     }
@@ -516,32 +516,6 @@ function App() {
       setIsRecording(false)
     }
   }, [showVoiceModal, currentVoiceWord])
-
-  const handleVoiceSend = (text: string) => {
-    if (!voiceWs || !isVoiceConnected) {
-      alert('Not connected to voice server.')
-      return
-    }
-
-    setVoiceMessages((prev) => [...prev, `You: ${text}`])
-
-    // Send user message
-    const event = {
-      type: 'conversation.item.create',
-      item: {
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text: text }],
-      },
-    }
-    voiceWs.send(JSON.stringify(event))
-
-    // Request response
-    const responseEvent = {
-      type: 'response.create',
-    }
-    voiceWs.send(JSON.stringify(responseEvent))
-  }
 
   const handleStartVoiceInput = async () => {
     try {
@@ -851,7 +825,8 @@ function App() {
     setLoadingImageId(wordId)
 
     try {
-      const prompt = `A colorful, playful English vocabulary learning card for the word "${word}", vertical layout, cheerful sky-blue background of ${nounKeyWords}. The word "${word}" appears in large bold letters with soft gradient fill and drop shadow, definition section with text "${englishDefinition}" below. A sample sentence section with text: "${englishExample}" below the definition section. Use readable, classroom-friendly typography with good spacing.`
+      //const prompt = `A colorful, playful English vocabulary learning card for the word "${word}", vertical layout, cheerful sky-blue background of ${nounKeyWords}. The word "${word}" appears in large bold letters with soft gradient fill and drop shadow, definition section with text "${englishDefinition}" below. A sample sentence section with text: "${englishExample}" below the definition section. Use readable, classroom-friendly typography with good spacing.`
+      const prompt = `A vibrant and cute illustration-style English vocabulary flashcard in vertical orientation. Background of ${nounKeyWords}. At the top center, the bold large English word '${word}' with soft gradient fill and drop shadow, highly legible. Below it, the definition section with text: "${englishDefinition}". Further below the definition section, the example sentence with text: "${englishExample}". All text is well-spaced with classroom-friendly typography.`
       console.log(prompt)
 
       const response = await fetch('https://api.x.ai/v1/images/generations', {
@@ -961,7 +936,7 @@ function App() {
           </div>
           <div className="logo-text">
             <h1>GrokWords</h1>
-            <p>Grok 1000 English Words with xAI</p>
+            <p>Grok 10,000 English Words with xAI</p>
           </div>
         </div>
         <div className="header-right">
@@ -1168,7 +1143,7 @@ function App() {
                               setConfirmWordName(word.word)
                               setShowConfirmDialog(true)
                             }}
-                            style={{ backgroundColor: '#10b981' }}
+                            style={{ backgroundColor: 'transparent', color: '#10b981' }}
                           >
                             ✓
                           </button>
@@ -1275,12 +1250,10 @@ function App() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <path d="M6 10c-1.5-1-3-1-4.5 0v4c1.5-1 3-1 4.5 0" />
-                          <path d="M6 10c0-1.5 1-2.5 2.5-2.5s2.5 1 2.5 2.5" />
-                          <path d="M6 14c0 1.5 1 2.5 2.5 2.5s2.5-1 2.5-2.5" />
-                          <line x1="11.5" y1="11.5" x2="14.5" y2="10" />
-                          <line x1="11.5" y1="11.5" x2="14.5" y2="11.5" />
-                          <line x1="11.5" y1="11.5" x2="14.5" y2="13" />
+                          <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                          <path d="M12 19v3" />
+                          <path d="M8 22h8" />
                         </svg>
                       </button>
                     ) : (
@@ -1371,48 +1344,50 @@ function App() {
       </main>
 
       <footer className="footer">
-        <div className="footer-text">
-          Showing {startIndex + 1}-{Math.min(endIndex, filteredWords.length)} of {filteredWords.length} words (Page {currentPage} of {totalPages || 1})
-        </div>
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '1rem', justifyContent: 'center' }}>
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: currentPage === 1 ? '#d1d5db' : '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}
-            >
-              Previous
-            </button>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: currentPage === totalPages ? '#d1d5db' : '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500'
-              }}
-            >
-              Next
-            </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
+          <div className="footer-text">
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredWords.length)} of {filteredWords.length} words (Page {currentPage} of {totalPages || 1})
           </div>
-        )}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: currentPage === 1 ? '#d1d5db' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                &lt;&lt; Prev
+              </button>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: currentPage === totalPages ? '#d1d5db' : '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                Next &gt;&gt;
+              </button>
+            </div>
+          )}
+        </div>
         <div style={{ 
           display: 'flex', 
           gap: '1.5rem', 
@@ -1864,7 +1839,7 @@ function App() {
                   className="regenerate-button"
                   onClick={async () => {
                     if (currentWordId !== null) {
-                      const confirmed = window.confirm('Are you really want to re-generate an image?')
+                      const confirmed = window.confirm('Do you really want to re-generate an image?')
                       if (!confirmed) {
                         return
                       }
