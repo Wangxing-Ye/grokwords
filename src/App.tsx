@@ -364,7 +364,8 @@ function App() {
       // Browser WebSocket doesn't support custom headers
       const connectWebSocket = async () => {
         try {
-          setVoiceMessages((prev) => [...prev, 'Fetching authentication token...'])
+          // setVoiceMessages((prev) => [...prev, 'Fetching authentication token...'])
+          setVoiceMessages((prev) => [...prev, 'Connecting to Grok...'])
           
           // Fetch ephemeral token from xAI
           const tokenResponse = await fetch('https://api.x.ai/v1/realtime/client_secrets', {
@@ -381,7 +382,8 @@ function App() {
           if (!tokenResponse.ok) {
             const errorText = await tokenResponse.text()
             console.error('Failed to get ephemeral token:', errorText)
-            setVoiceMessages((prev) => [...prev, `Error: Failed to authenticate. ${errorText}`])
+            // setVoiceMessages((prev) => [...prev, `Error: Failed to authenticate. ${errorText}`])
+            setVoiceMessages((prev) => [...prev, `Failed to connect to Grok. ${errorText}`])
             return
           }
 
@@ -391,7 +393,8 @@ function App() {
           console.log('Ephemeral token:', ephemeralToken)
 
           if (!ephemeralToken) {
-            setVoiceMessages((prev) => [...prev, 'Error: No token received from server.'])
+            // setVoiceMessages((prev) => [...prev, 'Error: No token received from server.'])
+            setVoiceMessages((prev) => [...prev, 'Failed to connect to Grok. No ephemeral token received.'])
             return
           }
 
@@ -401,7 +404,8 @@ function App() {
           ws.onopen = () => {
             console.log('Connected to voice server.')
             setIsVoiceConnected(true)
-            setVoiceMessages((prev) => [...prev, 'Connected to voice server.'])
+            // setVoiceMessages((prev) => [...prev, 'Connected to voice server.'])
+            setVoiceMessages((prev) => [...prev, 'Connected to Grok. Click the microphone to start a conversation...'])
 
             // Configure the session
             const sessionConfig = {
@@ -462,7 +466,8 @@ function App() {
               }
 
               if (msg.type === 'error') {
-                setVoiceMessages((prev) => [...prev, `Error: ${msg.error?.message || 'Unknown error'}`])
+                // setVoiceMessages((prev) => [...prev, `Error: ${msg.error?.message || 'Unknown error'}`])
+                setVoiceMessages((prev) => [...prev, `Failed to connect to Grok. ${msg.error?.message || 'Unknown error'}`])
               }
 
               // Handle other events: conversation.item.created, etc.
@@ -473,7 +478,8 @@ function App() {
 
       ws.onerror = (error: Event) => {
         console.error('WebSocket error:', error)
-        setVoiceMessages((prev) => [...prev, 'Connection error occurred.'])
+        // setVoiceMessages((prev) => [...prev, 'Connection error occurred.'])
+        setVoiceMessages((prev) => [...prev, 'Failed to connect to Grok. Connection error occurred.'])
       }
 
       ws.onclose = () => {
@@ -489,7 +495,8 @@ function App() {
           setVoiceWs(ws)
         } catch (error) {
           console.error('Error connecting to voice server:', error)
-          setVoiceMessages((prev) => [...prev, `Error: ${error instanceof Error ? error.message : 'Failed to connect'}`])
+          // setVoiceMessages((prev) => [...prev, `Error: ${error instanceof Error ? error.message : 'Failed to connect'}`])
+          setVoiceMessages((prev) => [...prev, `Failed to connect to Grok. ${error instanceof Error ? error.message : 'Failed to connect'}`])
         }
       }
 
@@ -534,7 +541,7 @@ function App() {
         microphoneStreamRef.current = null
         audioProcessorRef.current = null
         setIsRecording(false)
-        setVoiceMessages((prev) => [...prev, 'Microphone deactivated. Click again to start speaking...'])
+        setVoiceMessages((prev) => [...prev, 'Microphone is now off. Click again to start a conversation...'])
         return
       }
 
@@ -578,7 +585,7 @@ function App() {
       processor.connect(audioContext.destination)
       audioProcessorRef.current = processor
 
-      setVoiceMessages((prev) => [...prev, 'Microphone activated. Start speaking...'])
+      setVoiceMessages((prev) => [...prev, 'Microphone is now on. Please speak...'])
     } catch (error) {
       console.error('Error accessing microphone:', error)
       alert('Could not access microphone. Please check permissions.')
@@ -1034,7 +1041,8 @@ function App() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              <circle cx="12" cy="8" r="4" />
+              <path d="M8 12l-2 8 6-3 6 3-2-8" />
             </svg>
           </button>
           <button
@@ -1044,15 +1052,15 @@ function App() {
             <svg
               width="20"
               height="20"
-              viewBox="0 0 20 20"
+              viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <circle cx="10" cy="10" r="3" />
-              <path d="M10 2v2M10 16v2M18 10h-2M4 10H2M16.5 3.5l-1.4 1.4M4.9 15.1l-1.4 1.4M16.5 16.5l-1.4-1.4M4.9 4.9l-1.4-1.4M15.1 4.9l1.4-1.4M5.5 15.1l1.4-1.4M15.1 15.1l1.4 1.4M5.5 4.9l1.4 1.4" />
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z" />
             </svg>
           </button>
         </div>
@@ -1839,7 +1847,7 @@ function App() {
                   className="regenerate-button"
                   onClick={async () => {
                     if (currentWordId !== null) {
-                      const confirmed = window.confirm('Do you really want to re-generate an image?')
+                      const confirmed = window.confirm('Do you really want to re-generate this image?')
                       if (!confirmed) {
                         return
                       }
