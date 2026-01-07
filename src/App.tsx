@@ -358,7 +358,7 @@ function App() {
     if (showVoiceModal && !voiceWs) {
       const apiKey = localStorage.getItem('grokwords_apiKey') || ''
       if (!apiKey) {
-        alert('Please set your API key in Settings first.')
+        alert('Please set your xAI API key in Settings first.')
         setShowVoiceModal(false)
         return
       }
@@ -640,7 +640,7 @@ function App() {
     const nativeLanguage = localStorage.getItem('grokwords_nativeLanguage') || 'english'
 
     if (!apiKey) {
-      alert('Please set your API key in Settings first.')
+      alert('Please set your xAI API key and native language in Settings first.')
       return
     }
 
@@ -1774,7 +1774,7 @@ function App() {
                     <input
                       type="password"
                       className="settings-input"
-                      placeholder="sk-..."
+                      placeholder="xai..."
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                     />
@@ -1850,6 +1850,10 @@ function App() {
               <button
                 className="save-button"
                 onClick={() => {
+                  if (nativeLanguage === 'english') {
+                    alert('Please choose a native language other than English for translations.')
+                    return
+                  }
                   // Save API key and native language to localStorage
                   localStorage.setItem('grokwords_apiKey', apiKey)
                   localStorage.setItem('grokwords_nativeLanguage', nativeLanguage)

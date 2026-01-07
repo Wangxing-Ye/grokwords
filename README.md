@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# GrokWords
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally (IndexedDB), and can auto-generate examples, images, and voice practice.
 
-Currently, two official plugins are available:
+## Features
+- Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels.
+- Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
+- Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
+- Images: one-click illustration generation; regenerate and download (note: images available ~24h).
+- Voice: connect, speak, and practice with Grok Voice Agent; shows connection/status messages.
+- Progress & rewards: medal modal with totals, percentage to 1000, and reward milestones (100 and 1,000 words); grokked-at timestamps stored.
+- Storage: words and updates are saved to IndexedDB; settings in `localStorage`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Prerequisites
+- Node.js 18+
+- An xAI API key
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Setup
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Run
+```bash
+npm run dev      # start locally
+npm run build    # type-check + build
+npm run preview  # preview the prod build
+npm run lint     # eslint
 ```
+
+## Usage
+1) Open the app and set your **xAI API key** and **native language** in Settings (English is disallowed as the native language for translations).  
+2) Select a word and click **Grok** to fetch POS/definition/translation. The app auto-generates an example and keywords.  
+3) Generate an **image** for the word; you can regenerate or download it (download within 24h).  
+4) Use the **voice** modal to practice speaking.  
+5) Open **Rewards** (medal icon) to view total grokked words, progress to 1000, date counts, and reward milestones.
+
+## Data
+- Source list: `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv`
+- Local persistence: IndexedDB (`words` store) for word data and timestamps; `localStorage` for settings.
