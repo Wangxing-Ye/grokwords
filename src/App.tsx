@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import './App.css'
 
 interface Word {
@@ -12,6 +12,7 @@ interface Word {
   example: string
   revealed: boolean
   imageUrl?: string
+  grokkedAt?: string
 }
 
 const levels = [
@@ -53,6 +54,7 @@ function App() {
   const [isVoiceConnected, setIsVoiceConnected] = useState(false)
   const [voiceMessages, setVoiceMessages] = useState<string[]>([])
   const [isRecording, setIsRecording] = useState(false)
+  const [loadingExampleId, setLoadingExampleId] = useState<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioQueueRef = useRef<Float32Array[]>([])
   const microphoneStreamRef = useRef<MediaStream | null>(null)
@@ -252,6 +254,7 @@ function App() {
             definition: '',
             example: '',
             revealed: false,
+            grokkedAt: undefined,
           }
         })
       } catch (error) {
@@ -706,6 +709,7 @@ function App() {
                   pos: pos,
                   phonetic: phonetic,
                   definition: fullDefinition,
+                  grokkedAt: w.grokkedAt ?? new Date().toISOString(),
                 }
               : w
           )
@@ -721,6 +725,7 @@ function App() {
         })
 
         // Automatically generate example after successful word info update
+        setLoadingExampleId(wordId)
         try {
           const exampleResponse = await fetch('https://api.x.ai/v1/chat/completions', {
             method: 'POST',
@@ -736,7 +741,7 @@ function App() {
                 },
                 {
                   role: 'user',
-                  content: `Generate a simple example sentence using the word "${word}" in English and its ${nativeLanguage} translation, Noun key words from the sentence. Format your response as: English sentence\n${nativeLanguage} translation\nNoun key words`,
+                  content: `Generate a simple example sentence using the word "${word}" as a ${pos} in English and its ${nativeLanguage} translation, Adj + Noun phrases, and Noun key words from the sentence. Format your response as: English sentence\n${nativeLanguage} translation\nAdj + Noun phrases\nNoun key words`,
                 },
               ],
               model: 'grok-4-1-fast-reasoning',
@@ -796,6 +801,8 @@ function App() {
         } catch (exampleError) {
           // Don't show error for example generation failure, just log it
           console.error('Error generating example:', exampleError)
+        } finally {
+          setLoadingExampleId(null)
         }
       } else {
         console.error('Unexpected response format:', content)
@@ -827,13 +834,28 @@ function App() {
     // Extract only English parts (before \n) from definition and example
     const englishDefinition = definition.split('\n')[0].trim()
     const englishExample = example.split('\n')[0].trim()
-    const nounKeyWords = example.split('\n')[2].trim()
+    const phraseKeyWords = example.split('\n')[2]?.trim() || ''
+    const nounKeyWords = example.split('\n')[3]?.trim() || ''
+
+    const nounParts = nounKeyWords
+    ? nounKeyWords.split(',').map(p => p.trim()).filter(Boolean)
+    : []
+
+    let keyWords = phraseKeyWords
+    nounParts.forEach(n => {
+      if (!phraseKeyWords.toLowerCase().includes(n.toLowerCase())) {
+        keyWords = keyWords ? `${keyWords}, ${n}` : n
+      }
+    })
+
+    // Strip helper prefixes if present
+    keyWords = keyWords.replace(/^Adj \+ Noun phrases:\s*/i, '').replace(/^Noun key words:\s*/i, '')
 
     setLoadingImageId(wordId)
 
     try {
       //const prompt = `A colorful, playful English vocabulary learning card for the word "${word}", vertical layout, cheerful sky-blue background of ${nounKeyWords}. The word "${word}" appears in large bold letters with soft gradient fill and drop shadow, definition section with text "${englishDefinition}" below. A sample sentence section with text: "${englishExample}" below the definition section. Use readable, classroom-friendly typography with good spacing.`
-      const prompt = `A vibrant and cute illustration-style English vocabulary flashcard in vertical orientation. Background of ${nounKeyWords}. At the top center, the bold large English word '${word}' with soft gradient fill and drop shadow, highly legible. Below it, the definition section with text: "${englishDefinition}". Further below the definition section, the example sentence with text: "${englishExample}". All text is well-spaced with classroom-friendly typography.`
+      const prompt = `A vibrant and cute illustration-style English vocabulary flashcard in vertical orientation. Background of ${keyWords}. At the top center, the bold large English word '${word}' with soft gradient fill and drop shadow, highly legible. Below it, the definition section with text: "${englishDefinition}". Further below the definition section, the example sentence with text: "${englishExample}". All text is well-spaced with classroom-friendly typography.`
       console.log(prompt)
 
       const response = await fetch('https://api.x.ai/v1/images/generations', {
@@ -1172,7 +1194,23 @@ function App() {
                     )}
                   </td>
                   <td>
-                    {word.example && word.example.trim() ? (
+                    {loadingExampleId === word.id ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#6b7280' }}>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 18 18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="spinning-icon"
+                        >
+                          <circle cx="9" cy="9" r="7" strokeDasharray="12" strokeDashoffset="3" />
+                        </svg>
+                      </div>
+                    ) : word.example && word.example.trim() ? (
                       <div className="example-content">
                         {word.example.split('\n').slice(0, 2).map((line, index) => (
                           <div key={index}>{line}</div>
@@ -1227,9 +1265,9 @@ function App() {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             >
-                              <rect x="3" y="3" width="12" height="12" rx="2" />
+                              <path d="M3 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
                               <circle cx="7" cy="7" r="1.5" />
-                              <path d="M3 11l4-4 3 3 5-5" />
+                              <path d="M3 13l3-3 2 2 3-3 4 4" />
                             </svg>
                           )}
                         </button>
@@ -1458,10 +1496,10 @@ function App() {
 
       {showProgressModal && (
         <div className="modal-overlay" onClick={() => setShowProgressModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
             <div className="modal-header">
               <div className="modal-header-left">
-                <h2>Progress</h2>
+                <h2>Rewards</h2>
               </div>
               <button
                 className="modal-close-button"
@@ -1482,15 +1520,36 @@ function App() {
 
             <div className="modal-body">
               {(() => {
-                const grokkedWordsCount = words.filter(w => w.definition && w.definition.trim().length > 0).length
+                const grokkedWords = words.filter(w => w.definition && w.definition.trim().length > 0)
+                const grokkedWordsCount = grokkedWords.length
                 const progress = Math.min((grokkedWordsCount / 1000) * 100, 100)
-                
+
+                const countsByDate = grokkedWords.reduce<Record<string, number>>((acc, w) => {
+                  const dateKey = w.grokkedAt
+                    ? w.grokkedAt.slice(0, 10).replace(/-/g, '/')
+                    : 'Unknown'
+                  acc[dateKey] = (acc[dateKey] || 0) + 1
+                  return acc
+                }, {})
+
+                const sortedDateEntries = Object.entries(countsByDate).sort((a, b) => {
+                  // Push "Unknown" to the end, otherwise sort descending by date string
+                  if (a[0] === 'Unknown') return 1
+                  if (b[0] === 'Unknown') return -1
+                  return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0
+                })
+
                 return (
-                  <div style={{ padding: '1rem' }}>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '600', color: '#111827', marginBottom: '1rem', textAlign: 'center' }}>
-                      {grokkedWordsCount} / 1000 words grokked
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontWeight: '700', color: '#111827' }}>
+                      <span style={{ fontSize: '1.25rem' }}>Total Grokked Words</span>
+                      <span style={{ fontSize: '3.5rem' }}>{grokkedWordsCount}</span>
                     </div>
-                    <div style={{ marginBottom: '0.5rem' }}>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>
+                        Progress ({Math.round(progress)}% of 1000)
+                      </div>
                       <div style={{ 
                         width: '100%', 
                         height: '32px', 
@@ -1515,9 +1574,33 @@ function App() {
                           {progress >= 10 ? `${Math.round(progress)}%` : ''}
                         </div>
                       </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                        {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
-                      {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
+
+                    <div style={{ padding: '0.75rem 1rem', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px dashed #d1d5db' }}>
+                      <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Rewards</div>
+                      <div style={{ color: '#6b7280', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <span>• Grok 100 words to unlock an exciting reward!</span>
+                        <span>• Grok 1,000 words... and who knows? Elon might just owe you a reward! 🎁</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.5rem' }}>Records</div>
+                      {sortedDateEntries.length === 0 ? (
+                        <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No grokked words yet.</div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: '0.4rem', columnGap: '1rem', fontSize: '0.95rem' }}>
+                          {sortedDateEntries.map(([date, count]) => (
+                            <Fragment key={date}>
+                              <span style={{ color: '#111827' }}>{date}</span>
+                              <span style={{ color: '#111827', fontWeight: 600, textAlign: 'right' }}>{count}</span>
+                            </Fragment>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
@@ -1730,21 +1813,22 @@ function App() {
                       onChange={(e) => setNativeLanguage(e.target.value)}
                     >
                       <option value="english">English (Default)</option>
+                      <option value="arabic">العربية (Arabic)</option>
                       <option value="chinese">中文 (Chinese)</option>
                       <option value="traditional-chinese">繁體中文 (Traditional Chinese)</option>
-                      <option value="spanish">Español (Spanish)</option>
                       <option value="french">Français (French)</option>
+                      <option value="german">Deutsch (German)</option>
+                      <option value="hindi">हिंदी (Hindi)</option>
+                      <option value="indonesian">Bahasa Indonesia (Indonesian)</option>
+                      <option value="italian">Italiano (Italian)</option>
                       <option value="japanese">日本語 (Japanese)</option>
                       <option value="korean">한국어 (Korean)</option>
-                      <option value="turkish">Türkçe (Turkish)</option>
-                      <option value="portuguese">Português (Portuguese)</option>
-                      <option value="hindi">हिंदी (Hindi)</option>
-                      <option value="russian">Русский (Russian)</option>
-                      <option value="arabic">العربية (Arabic)</option>
-                      <option value="indonesian">Bahasa Indonesia (Indonesian)</option>
                       <option value="malay">Bahasa Melayu (Malay)</option>
+                      <option value="portuguese">Português (Portuguese)</option>
+                      <option value="russian">Русский (Russian)</option>
+                      <option value="spanish">Español (Spanish)</option>
+                      <option value="turkish">Türkçe (Turkish)</option>
                       <option value="vietnamese">Tiếng Việt (Vietnamese)</option>
-                      <option value="german">Deutsch (German)</option>
                     </select>
                     <svg
                       width="12"
@@ -1878,14 +1962,16 @@ function App() {
                     <svg
                       width="20"
                       height="20"
-                      viewBox="0 0 20 20"
+                      viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      strokeWidth="2"
+                      strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     >
-                      <path d="M1 4v6h6M19 16v-6h-6M19 4l-7 7M1 16l7-7" />
+                      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
+                      <circle cx="9" cy="9" r="1.75" />
+                      <path d="m3 17 5.5-5.5 3.5 3.5L17 10l4 4" />
                     </svg>
                   )}
                 </button>
@@ -1908,6 +1994,9 @@ function App() {
             </div>
             <div className="image-modal-body">
               <img src={generatedImageUrl} alt="Generated" className="generated-image" />
+              <div style={{ marginTop: '0.1rem', fontSize: '0.75rem', color: '#6b7280', textAlign: 'center' }}>
+                Please download the image, it is available for only 24 hours.
+              </div>
             </div>
           </div>
         </div>
