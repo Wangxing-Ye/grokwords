@@ -13,6 +13,8 @@ interface Word {
   revealed: boolean
   imageUrl?: string
   grokkedAt?: string
+  toefl?: string
+  ielts?: string
 }
 
 const levels = [
@@ -21,6 +23,8 @@ const levels = [
   { value: '1', label: 'Level 1 (Basic)' },
   { value: '2', label: 'Level 2 (Intermediate)' },
   { value: '3', label: 'Level 3 (Advanced)' },
+  { value: 'toefl', label: 'TOEFL' },
+  { value: 'ielts', label: 'IELTS' },
 ]
 
 function App() {
@@ -236,7 +240,7 @@ function App() {
         const dataLines = lines.slice(1)
         
         return dataLines.map((line, index) => {
-          const [headword, cefr] = line.split(',').map(s => s.trim())
+          const [headword, cefr, toefl = '', ielts = ''] = line.split(',').map(s => s.trim())
           
           // If headword has '/', use the first word
           const word = headword.includes('/') ? headword.split('/')[0] : headword
@@ -255,6 +259,8 @@ function App() {
             example: '',
             revealed: false,
             grokkedAt: undefined,
+            toefl: toefl || '',
+            ielts: ielts || '',
           }
         })
       } catch (error) {
@@ -920,6 +926,10 @@ function App() {
     } else if (selectedLevel === 'grokked') {
       // Show words that have been grokked (have definition)
       levelMatch = !!(word.definition && word.definition.trim().length > 0)
+    } else if (selectedLevel === 'toefl') {
+      levelMatch = (word.toefl || '').trim() === '1'
+    } else if (selectedLevel === 'ielts') {
+      levelMatch = (word.ielts || '').trim() === '1'
     } else {
       levelMatch = word.level.toString() === selectedLevel
     }
@@ -953,6 +963,19 @@ function App() {
         return 'level-advanced'
       default:
         return 'level-basic'
+    }
+  }
+
+  const getLevelLabel = (level: number) => {
+    switch (level) {
+      case 1:
+        return 'Basic'
+      case 2:
+        return 'Intermediate'
+      case 3:
+        return 'Advanced'
+      default:
+        return 'Basic'
     }
   }
 
@@ -1111,7 +1134,7 @@ function App() {
                 <tr key={word.id}>
                   <td>
                     <span className={`level-badge ${getLevelColor(word.level)}`}>
-                      {word.levelLabel}
+                      {getLevelLabel(word.level)}
                     </span>
                   </td>
                   <td>
@@ -1391,48 +1414,48 @@ function App() {
 
       <footer className="footer">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
-          <div className="footer-text">
-            Showing {startIndex + 1}-{Math.min(endIndex, filteredWords.length)} of {filteredWords.length} words (Page {currentPage} of {totalPages || 1})
-          </div>
-          {totalPages > 1 && (
+        <div className="footer-text">
+          Showing {startIndex + 1}-{Math.min(endIndex, filteredWords.length)} of {filteredWords.length} words (Page {currentPage} of {totalPages || 1})
+        </div>
+        {totalPages > 1 && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: currentPage === 1 ? '#d1d5db' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-              >
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: currentPage === 1 ? '#d1d5db' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
                 &lt;&lt; Prev
-              </button>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: currentPage === totalPages ? '#d1d5db' : '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-              >
+            </button>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: currentPage === totalPages ? '#d1d5db' : '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
                 Next &gt;&gt;
-              </button>
-            </div>
-          )}
+            </button>
+          </div>
+        )}
         </div>
         <div style={{ 
           display: 'flex', 
@@ -1538,7 +1561,7 @@ function App() {
                   if (b[0] === 'Unknown') return -1
                   return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0
                 })
-
+                
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontWeight: '700', color: '#111827' }}>
@@ -1575,7 +1598,7 @@ function App() {
                         </div>
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                        {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
+                      {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
                       </div>
                     </div>
 

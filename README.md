@@ -1,6 +1,6 @@
 # GrokWords
 
-GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally (IndexedDB), and can auto-generate examples, images, and voice practice.
+GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally (IndexedDB), and can auto-generate examples, images, and live voice practice.
 
 ## Features
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels.
