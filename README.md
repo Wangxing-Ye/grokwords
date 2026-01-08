@@ -44,6 +44,6 @@ npm run lint     # eslint
 
 ## License
 
-Copyright © [年份] [你的名字]
+Copyright © 2026 Wilson Ye
 
 This project is licensed under the terms of the [MIT License](LICENSE).
