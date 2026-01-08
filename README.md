@@ -1,7 +1,7 @@
 # GrokWords
 Grok 10,000 English Words with xAI
 
-GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally, and can auto-generate examples, images, and live voice practice.
+GrokWords is a React + TypeScript + Vite project that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally, and can auto-generate examples, images, and live voice practice.
 
 ## CEFR | IELTS | TOEFL
 CEFR divides English proficiency into six levels: A1 to C2. In this project they are grouped into three broad categories:
@@ -19,7 +19,7 @@ CEFR divides English proficiency into six levels: A1 to C2. In this project they
 | C2         | 8.5–9.0    | 114+                |
 
 ## xAI API
-Note: Each user needs their own xAI API key to run the project (frontend-only; no backend; no user data is saved).
+Note: Each user needs their own xAI API key to run this project (frontend-only; no backend; no user data is saved).
 - Get an API key: https://accounts.x.ai/sign-in?redirect=cloud-console
 - Purchase API credits
 - API Docs:
@@ -28,7 +28,7 @@ Note: Each user needs their own xAI API key to run the project (frontend-only; n
   - Grok Voice Agent: https://docs.x.ai/docs/guides/voice/agent
 
 ## Features
-- This app only has the front end and does not include a backend.
+- This project only has the front end and does not include a backend.
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels; includes most TOEFL and IELTS words.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
@@ -67,6 +67,7 @@ npm run lint     # eslint
 
 ## Next Steps
 - Continue building with xAI upcoming TTS and Video Generation API.
+- Design a token incentive program for the rewards.
 
 ## License
 
