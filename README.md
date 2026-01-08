@@ -3,7 +3,7 @@
 GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally (IndexedDB), and can auto-generate examples, images, and live voice practice.
 
 ## Features
-- Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels.
+- Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels; includes most TOEFL and IELTS words.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
 - Images: one-click illustration generation; regenerate and download (note: images available ~24h).
@@ -36,5 +36,8 @@ npm run lint     # eslint
 5) Open **Rewards** (medal icon) to view total grokked words, progress to 1000, date counts, and reward milestones.
 
 ## Data
-- Source list: `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv`
+- Source list: `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` (most TOEFL/IELTS words included)
 - Local persistence: IndexedDB (`words` store) for word data and timestamps; `localStorage` for settings.
+
+## Next Steps
+- Continue building with xAI upcoming TTS and Video Generation API.
