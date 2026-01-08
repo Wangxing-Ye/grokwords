@@ -679,7 +679,9 @@ function App() {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('API Error:', errorText)
-        throw new Error(`Failed to fetch word info: ${response.status}`)
+        const sentences = errorText.split('.').map(s => s.trim()).filter(Boolean)
+        const reason = sentences.length >= 2 ? sentences[1] : errorText
+        throw new Error(`Failed to fetch word info - ${reason}`)
       }
 
       const data = await response.json()
@@ -775,6 +777,12 @@ function App() {
                 example = example.replace(/\n\n/g, '\n')
               }
 
+              // Strip any prefixed labels like "English sentence:" or "<nativeLanguage> translation:"
+              example = example.replace(/English sentence:\s*/gi, '')
+              const escapedNative = nativeLanguage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+              const nativeLabelRegex = new RegExp(`${escapedNative}\\s+translation:\\s*`, 'gi')
+              example = example.replace(nativeLabelRegex, '')
+
               // If example doesn't include '\n', replace the period before the translation with '\n'
               if (!example.includes('\n')) {
                 // Replace period + space that's followed by non-ASCII characters (translation) with period + newline + space
@@ -816,7 +824,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error fetching word info:', error)
-      alert(`Failed to generate word info. Please check your API key and try again.`)
+      alert(`${error}`)
     } finally {
       setLoadingGrokId(null)
     }
@@ -880,7 +888,9 @@ function App() {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('API Error:', errorText)
-        throw new Error(`Failed to generate image: ${response.status}`)
+        const sentences = errorText.split('.').map(s => s.trim()).filter(Boolean)
+        const reason = sentences.length >= 2 ? sentences[1] : errorText
+        throw new Error(`Failed to generate image - ${reason}`)
       }
 
       const data = await response.json()
@@ -912,7 +922,7 @@ function App() {
       })
     } catch (error) {
       console.error('Error generating image:', error)
-      alert(`Failed to generate image. Please check your API key and try again.`)
+      alert(`${error}`)
     } finally {
       setLoadingImageId(null)
     }
@@ -2051,43 +2061,58 @@ function App() {
 
       {showVoiceModal && (
         <div className="modal-overlay" onClick={() => setShowVoiceModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
-            <div className="modal-header">
-              <div className="modal-header-left">
-                <h2>Dialogue Practice: {currentVoiceWord}</h2>
-              </div>
-              <button
-                className="modal-close-button"
-                onClick={() => {
-                  if (voiceWs) {
-                    voiceWs.close()
-                    setVoiceWs(null)
-                  }
-                  if (microphoneStreamRef.current) {
-                    microphoneStreamRef.current.getTracks().forEach(track => track.stop())
-                    microphoneStreamRef.current = null
-                  }
-                  if (audioProcessorRef.current) {
-                    audioProcessorRef.current.disconnect()
-                    audioProcessorRef.current = null
-                  }
-                  setIsRecording(false)
-                  setShowVoiceModal(false)
-                  setVoiceMessages([])
-                }}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+              <div className="modal-header">
+                <div className="modal-header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                    <path d="M5.5 21c0-3.5 3-6.5 6.5-6.5S18.5 17.5 18.5 21" />
+                    <path d="M9 6.5c0-1.38.9-2.5 2.5-2.5 1.6 0 2.5 1.12 2.5 2.5" />
+                  </svg>
+                  <h2>Dialogue Practice: {currentVoiceWord}</h2>
+                </div>
+                <button
+                  className="modal-close-button"
+                  onClick={() => {
+                    if (voiceWs) {
+                      voiceWs.close()
+                      setVoiceWs(null)
+                    }
+                    if (microphoneStreamRef.current) {
+                      microphoneStreamRef.current.getTracks().forEach(track => track.stop())
+                      microphoneStreamRef.current = null
+                    }
+                    if (audioProcessorRef.current) {
+                      audioProcessorRef.current.disconnect()
+                      audioProcessorRef.current = null
+                    }
+                    setIsRecording(false)
+                    setShowVoiceModal(false)
+                    setVoiceMessages([])
+                  }}
                 >
-                  <path d="M15 5L5 15M5 5l10 10" />
-                </svg>
-              </button>
-            </div>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M15 5L5 15M5 5l10 10" />
+                  </svg>
+                </button>
+              </div>
 
             <div className="modal-body">
               <div style={{ marginBottom: '1rem' }}>
