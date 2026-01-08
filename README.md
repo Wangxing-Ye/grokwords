@@ -18,6 +18,15 @@ CEFR divides English proficiency into six levels: A1 to C2. In this project they
 | C1         | 7.0–8.0    | 95–120              |
 | C2         | 8.5–9.0    | 114+                |
 
+## xAI API
+Note: Each user needs their own xAI API key to run the project (frontend-only; no backend; no user data is saved).
+- Get an API key: https://accounts.x.ai/sign-in?redirect=cloud-console
+- Purchase API credits
+- API Docs:
+  - Chat Responses: https://docs.x.ai/docs/guides/chat
+  - Image Generation: https://docs.x.ai/docs/guides/image-generations
+  - Grok Voice Agent: https://docs.x.ai/docs/guides/voice/agent
+
 ## Features
 - This app only has the front end and does not include a backend.
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels; includes most TOEFL and IELTS words.
