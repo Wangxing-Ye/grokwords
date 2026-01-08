@@ -1,8 +1,25 @@
 # GrokWords
 Grok 10,000 English Words with xAI
-GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally (IndexedDB), and can auto-generate examples, images, and live voice practice.
+
+GrokWords is a React + TypeScript + Vite app that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally, and can auto-generate examples, images, and live voice practice.
+
+## CEFR | IELTS | TOEFL
+CEFR divides English proficiency into six levels: A1 to C2. In this project they are grouped into three broad categories:
+- A1–A2: Basic
+- B1–B2: Intermediate
+- C1–C2: Advanced
+
+| CEFR Level | IELTS Band | TOEFL iBT (approx.) |
+| ---------- | ---------- | ------------------- |
+| A1         | 2.0–3.5    | N/A                 |
+| A2         | 4.0        | N/A–41              |
+| B1         | 4.5–5.0    | 42–71               |
+| B2         | 5.5–6.5    | 72–94               |
+| C1         | 7.0–8.0    | 95–120              |
+| C2         | 8.5–9.0    | 114+                |
 
 ## Features
+- This app only has the front end and does not include a backend.
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels; includes most TOEFL and IELTS words.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
