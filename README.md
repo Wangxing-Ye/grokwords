@@ -6,9 +6,11 @@ Grok 10,000 English Words with xAI
 GrokWords is a React + TypeScript + Vite project that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally, and can auto-generate examples, images, and live voice practice.
 
 ## Word Image Samples
-![Abandon sample](/public/samples/abandon.jpeg)
-![Rabbit sample](/public/samples/rabbit.jpeg)
-![Zipper sample](/public/samples/zipper.jpeg)
+<p>
+  <img src="/public/samples/abandon.jpeg" alt="Abandon sample" width="50%" />
+  <img src="/public/samples/rabbit.jpeg" alt="Rabbit sample" width="50%" />
+  <img src="/public/samples/zipper.jpeg" alt="Zipper sample" width="50%" />
+</p>
 
 ## CEFR | IELTS | TOEFL
 CEFR divides English proficiency into six levels: A1 to C2. In this project they are grouped into three broad categories:
