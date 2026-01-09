@@ -48,14 +48,14 @@ Note: Each user needs their own xAI API key to run this project (frontend-only; 
   - Grok Voice Agent: https://docs.x.ai/docs/guides/voice/agent
 
 ## Features
-- This project only has the front end and does not include a backend.
-- Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels; includes most TOEFL and IELTS words.
+- No backend: This project only has the front end and does not include a backend.
+- Storage: settings, words and updates are saved locally.
+- Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels and TOEFL & IELTS tags.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
 - Images: one-click illustration generation; regenerate and download (note: images available ~24h).
 - Voice: connect, speak, and practice with Grok Voice Agent; shows connection/status messages.
 - Progress & rewards: medal modal with totals, percentage to 1000, and reward milestones (100 and 1,000 words); grokked-at timestamps stored.
-- Storage: words and updates are saved to IndexedDB; settings in `localStorage`.
 
 ## Prerequisites
 - Node.js 18+
@@ -80,10 +80,6 @@ npm run lint     # eslint
 3) Generate an **image** for the word; you can regenerate or download it (download within 24h).  
 4) Use the **voice** modal to practice speaking.  
 5) Open **Rewards** (medal icon) to view total grokked words, progress to 1000, date counts, and reward milestones.
-
-## Data
-- Source list: `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` (most TOEFL/IELTS words included)
-- Local persistence: IndexedDB (`words` store) for word data and timestamps; `localStorage` for settings.
 
 ## Next Steps
 - Continue building with xAI upcoming TTS and Video Generation API.
