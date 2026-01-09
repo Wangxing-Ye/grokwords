@@ -1871,7 +1871,7 @@ function App() {
                     >
                       <option value="english">English (Default)</option>
                       <option value="arabic">العربية (Arabic)</option>
-                      <option value="chinese">中文 (Chinese)</option>
+                      <option value="simplified-chinese">简体中文 (Simplified Chinese)</option>
                       <option value="traditional-chinese">繁體中文 (Traditional Chinese)</option>
                       <option value="french">Français (French)</option>
                       <option value="german">Deutsch (German)</option>
