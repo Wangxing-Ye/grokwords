@@ -994,7 +994,11 @@ function App() {
       <header className="header">
         <div className="header-left">
           <div className="logo">
-            <div className="logo-icon">G</div>
+            <img
+              src="/favicon.svg"
+              alt="GrokWords logo"
+              style={{ width: '48px', height: '48px', borderRadius: '8px' }}
+            />
           </div>
           <div className="logo-text">
             <h1>GrokWords</h1>
