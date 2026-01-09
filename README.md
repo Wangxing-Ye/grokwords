@@ -14,6 +14,7 @@ Words Selection: Level 1 (Basic), Level 2 (Intermediate), Level 3 (Advanced), TO
   <img src="/public/demo/rabbit.jpeg" alt="Rabbit sample" width="32%" />
   <img src="/public/demo/zipper.jpeg" alt="Zipper sample" width="32%" />
 </p>
+
 Talk to Grok in voice to practice vocab
 ![Dialogue Practice](/public/demo/dialogue-practice.png)
 
