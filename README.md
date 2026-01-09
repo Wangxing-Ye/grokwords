@@ -7,11 +7,13 @@ GrokWords is a React + TypeScript + Vite project that helps you “grok” Engli
 
 ## Demo
 ![GrokWords UI](/public/demo/screenshot1.png)
+
 <p style="display: flex; gap: 8px; flex-wrap: wrap;">
   <img src="/public/demo/abandon.jpeg" alt="Abandon sample" width="32%" />
   <img src="/public/demo/rabbit.jpeg" alt="Rabbit sample" width="32%" />
   <img src="/public/demo/zipper.jpeg" alt="Zipper sample" width="32%" />
 </p>
+
 ![Dialogue Practice](/public/demo/dialogue-practice.png)
 
 ## Words: CEFR | IELTS | TOEFL
