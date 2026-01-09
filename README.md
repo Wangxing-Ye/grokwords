@@ -3,7 +3,9 @@ Grok 10,000 English Words with xAI
 
 ![GrokWords favicon](/public/favicon-96x96.png)
 
-GrokWords is a React + TypeScript + Vite project that helps you “grok” English vocabulary with xAI’s models. It ships with ~10k CEFR-tagged words, stores your progress locally, and can auto-generate examples, images, and live voice practice.
+GrokWords is an education project that helps you “grok” English vocabulary with xAI’s models. 
+
+It ships with ~11k words across CEFR levels, TOEFL & IELTS, and can generate definition, examples, images, and live voice practice with Grok.
 
 ## Demo
 Words Selection: Level 1 (Basic), Level 2 (Intermediate), Level 3 (Advanced), TOEFL and IELTS
