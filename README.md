@@ -12,16 +12,17 @@ Words Selection: Level 1 (Basic), Level 2 (Intermediate), Level 3 (Advanced), TO
 ![GrokWords UI](/public/demo/screenshot1.png)
 
 <p style="display: flex; gap: 8px; flex-wrap: wrap;">
-  <img src="/public/demo/abandon.jpeg" alt="Abandon sample" width="32%" />
-  <img src="/public/demo/rabbit.jpeg" alt="Rabbit sample" width="32%" />
-  <img src="/public/demo/zipper.jpeg" alt="Zipper sample" width="32%" />
+  <img src="/public/demo/abandon.jpeg" alt="Abandon sample" width="24%" />
+  <img src="/public/demo/grok.jpeg" alt="Grok sample" width="24%" />
+  <img src="/public/demo/rabbit.jpeg" alt="Rabbit sample" width="24%" />
+  <img src="/public/demo/zipper.jpeg" alt="Zipper sample" width="24%" />
 </p>
 
 Talk to Grok in voice to practice vocab
 ![Dialogue Practice](/public/demo/dialogue-practice.png)
 
 ## Words: CEFR | IELTS | TOEFL
-English Words Number: **11405**
+English Words Number: **11406**
 
 CEFR divides English proficiency into six levels: A1 to C2. In this project they are grouped into three broad categories:
 - A1–A2: Level 1 (Basic)
