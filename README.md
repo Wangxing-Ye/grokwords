@@ -53,6 +53,7 @@ Note: Each user needs their own xAI API key to run this project (frontend-only; 
 - Storage: settings, words and updates are saved locally.
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels and TOEFL & IELTS tags.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
+- Native language support for translations: >العربية (Arabic), 简体中文 (Simplified Chinese), 繁體中文 (Traditional Chinese), Français (French), Deutsch (German), हिंदी (Hindi), Bahasa Indonesia (Indonesian), Italiano (Italian), 日本語 (Japanese), 한국어 (Korean), Bahasa Melayu (Malay), Português (Portuguese), Русский (Russian), Español (Spanish), Türkçe (Turkish), Tiếng Việt (Vietnamese).
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
 - Images: one-click illustration generation; regenerate and download (note: images available ~24h).
 - Voice: connect, speak, and practice with Grok Voice Agent; shows connection/status messages.
