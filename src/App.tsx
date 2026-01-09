@@ -1871,6 +1871,7 @@ function App() {
                     >
                       <option value="english">English (Default)</option>
                       <option value="arabic">العربية (Arabic)</option>
+                      <option value="bengali">বাংলা (Bengali)</option>
                       <option value="simplified-chinese">简体中文 (Simplified Chinese)</option>
                       <option value="traditional-chinese">繁體中文 (Traditional Chinese)</option>
                       <option value="french">Français (French)</option>
@@ -1882,8 +1883,10 @@ function App() {
                       <option value="korean">한국어 (Korean)</option>
                       <option value="malay">Bahasa Melayu (Malay)</option>
                       <option value="portuguese">Português (Portuguese)</option>
+                      <option value="persian">فارسی (Persian / Iranian)</option>
                       <option value="russian">Русский (Russian)</option>
                       <option value="spanish">Español (Spanish)</option>
+                      <option value="thai">ไทย (Thai)</option>
                       <option value="turkish">Türkçe (Turkish)</option>
                       <option value="vietnamese">Tiếng Việt (Vietnamese)</option>
                     </select>
