@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './App.css'
 
 interface Word {
@@ -19,7 +19,6 @@ interface Word {
 
 const levels = [
   { value: 'all', label: 'All' },
-  { value: 'grokked', label: 'Grokked' },
   { value: '1', label: 'Level 1 (Basic)' },
   { value: '2', label: 'Level 2 (Intermediate)' },
   { value: '3', label: 'Level 3 (Advanced)' },
@@ -33,13 +32,15 @@ function App() {
   ])
 
   const [selectedLevel, setSelectedLevel] = useState<string>('all')
+  const [selectedGrokStatus, setSelectedGrokStatus] = useState<'all' | 'ungrokked' | 'grokked' | 'understood'>('all')
   const [isLevelsDropdownOpen, setIsLevelsDropdownOpen] = useState(false)
+  const [isGrokStatusDropdownOpen, setIsGrokStatusDropdownOpen] = useState(false)
   const levelsDropdownRef = useRef<HTMLDivElement>(null)
+  const grokStatusDropdownRef = useRef<HTMLDivElement>(null)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [currentPage, setCurrentPage] = useState<number>(1)
   const itemsPerPage = 100
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [showProgressModal, setShowProgressModal] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [confirmWordId, setConfirmWordId] = useState<number | null>(null)
   const [confirmWordName, setConfirmWordName] = useState<string>('')
@@ -58,6 +59,9 @@ function App() {
   const [isVoiceConnected, setIsVoiceConnected] = useState(false)
   const [voiceMessages, setVoiceMessages] = useState<string[]>([])
   const [isRecording, setIsRecording] = useState(false)
+  const [showReviewList, setShowReviewList] = useState(false)
+  const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null)
+  const [revealedReviewIds, setRevealedReviewIds] = useState<Set<number>>(new Set())
   const [loadingExampleId, setLoadingExampleId] = useState<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioQueueRef = useRef<Float32Array[]>([])
@@ -340,6 +344,12 @@ function App() {
         !levelsDropdownRef.current.contains(event.target as Node)
       ) {
         setIsLevelsDropdownOpen(false)
+      }
+      if (
+        grokStatusDropdownRef.current &&
+        !grokStatusDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsGrokStatusDropdownOpen(false)
       }
     }
 
@@ -933,9 +943,6 @@ function App() {
     let levelMatch = false
     if (selectedLevel === 'all') {
       levelMatch = true
-    } else if (selectedLevel === 'grokked') {
-      // Show words that have been grokked (have definition)
-      levelMatch = !!(word.definition && word.definition.trim().length > 0)
     } else if (selectedLevel === 'toefl') {
       levelMatch = (word.toefl || '').trim() === '1'
     } else if (selectedLevel === 'ielts') {
@@ -944,18 +951,42 @@ function App() {
       levelMatch = word.level.toString() === selectedLevel
     }
 
+    // Grok status filter
+    const grokStatusMatch =
+      selectedGrokStatus === 'all'
+        ? true
+        : selectedGrokStatus === 'grokked'
+        ? !!(word.definition && word.definition.trim())
+        : selectedGrokStatus === 'understood'
+        ? word.pos?.trim() === '-'
+        : !(word.pos && word.pos.trim().length)
+
     // Filter by search query (words that start with the search text)
     const searchMatch =
       searchQuery === '' ||
       word.word.toLowerCase().startsWith(searchQuery.toLowerCase())
 
-    return levelMatch && searchMatch
+    const reviewDateMatch =
+      !selectedReviewDate ||
+      (word.grokkedAt && word.grokkedAt.slice(0, 10).replace(/-/g, '/') === selectedReviewDate)
+
+    return levelMatch && grokStatusMatch && searchMatch && reviewDateMatch
   })
+
+  const isReviewMode = !!selectedReviewDate
+
+  // Reset review reveals when toggling review list off
+  useEffect(() => {
+    if (!showReviewList) {
+      setSelectedReviewDate(null)
+      setRevealedReviewIds(new Set())
+    }
+  }, [showReviewList])
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedLevel, searchQuery])
+  }, [selectedLevel, selectedGrokStatus, searchQuery, selectedReviewDate])
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredWords.length / itemsPerPage)
@@ -988,6 +1019,18 @@ function App() {
         return 'Basic'
     }
   }
+
+  const getDaysSince = (dateStr: string): number | null => {
+    const parsed = Date.parse(dateStr.replace(/\//g, '-'))
+    if (Number.isNaN(parsed)) return null
+    const diffMs = Date.now() - parsed
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  }
+
+  const renderReviewIcon = (daysSince: number | null, target: number) => {
+    return daysSince === target
+  }
+
 
   return (
     <div className="app">
@@ -1061,6 +1104,74 @@ function App() {
               </div>
             )}
           </div>
+          <div className="dropdown-container" ref={grokStatusDropdownRef}>
+            <button
+              className="dropdown-button"
+              onClick={() => setIsGrokStatusDropdownOpen(!isGrokStatusDropdownOpen)}
+            >
+              {selectedGrokStatus === 'all'
+                ? 'All'
+                : selectedGrokStatus === 'grokked'
+                ? 'Grokked'
+                : selectedGrokStatus === 'understood'
+                ? 'Understood'
+                : 'Ungrokked'}
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                style={{
+                  transform: isGrokStatusDropdownOpen
+                    ? 'rotate(180deg)'
+                    : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                }}
+              >
+                <path d="M3 4.5l3 3 3-3" strokeLinecap="round" />
+              </svg>
+            </button>
+            {isGrokStatusDropdownOpen && (
+              <div className="dropdown-menu">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'ungrokked', label: 'Ungrokked' },
+                  { value: 'grokked', label: 'Grokked' },
+                  { value: 'understood', label: 'Understood' },
+                ].map((status) => (
+                  <div
+                    key={status.value}
+                    className="dropdown-menu-item"
+                    onClick={() => {
+                      setSelectedGrokStatus(status.value as typeof selectedGrokStatus)
+                      setIsGrokStatusDropdownOpen(false)
+                    }}
+                  >
+                    {selectedGrokStatus === status.value && (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        className="checkmark-icon"
+                      >
+                        <path
+                          d="M13.333 4L6 11.333 2.667 8"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                    <span>{status.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="search-container">
             <svg
               className="search-icon"
@@ -1087,8 +1198,10 @@ function App() {
           </div>
           <button
             className="settings-button"
-            onClick={() => setShowProgressModal(true)}
-            title="View progress"
+            title="Review & Remember"
+            onClick={() => {
+              setShowReviewList(prev => !prev)
+            }}
           >
             <svg
               width="20"
@@ -1100,8 +1213,10 @@ function App() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <circle cx="12" cy="8" r="4" />
-              <path d="M8 12l-2 8 6-3 6 3-2-8" />
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9 10h.01" />
+              <path d="M15 10h.01" />
+              <path d="M9 15a4 4 0 0 0 6 0" />
             </svg>
           </button>
           <button
@@ -1126,24 +1241,118 @@ function App() {
       </header>
 
       <main className="main-content">
+        {showReviewList && (
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+            <div style={{ fontWeight: 700, color: '#111827', marginBottom: '0.75rem', fontSize: '1.05rem', textAlign: 'center' }}>
+              Golden Review Time Points by Ebbinghaus
+            </div>
+            {(() => {
+              const grokkedWords = words.filter(w => w.definition && w.definition.trim().length > 0 && w.grokkedAt)
+              const countsByDate = grokkedWords.reduce<Record<string, number>>((acc, w) => {
+                const dateKey = w.grokkedAt!.slice(0, 10).replace(/-/g, '/')
+                acc[dateKey] = (acc[dateKey] || 0) + 1
+                return acc
+              }, {})
+              const sorted = Object.entries(countsByDate).sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+
+              if (sorted.length === 0) {
+                return <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No grokked words yet.</div>
+              }
+
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Date</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Grokked Words</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 0</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 1</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 3</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 7</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 15</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 30</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map(([date, count]) => {
+                      const daysSince = getDaysSince(date)
+                      const handleSelectDate = () => {
+                        const nextDate = selectedReviewDate === date ? null : date
+                        setSelectedReviewDate(nextDate)
+                        setRevealedReviewIds(new Set())
+                      }
+                      const renderIconFor = (target: number) => {
+                        const isDue = renderReviewIcon(daysSince, target)
+                        const isActive = selectedReviewDate === date && isDue
+                        const baseStyle = {
+                          textAlign: 'center' as const,
+                          cursor: isDue ? 'pointer' : 'default',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '22px',
+                          height: '22px',
+                          border: isDue ? '1px solid #d1d5db' : '1px solid transparent',
+                          borderRadius: '4px',
+                          backgroundColor: isActive ? '#3b82f6' : 'transparent',
+                          color: isActive ? '#ffffff' : '#111827',
+                          transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+                        }
+                        return (
+                          <span
+                            style={baseStyle}
+                            onClick={isDue ? handleSelectDate : undefined}
+                          />
+                        )
+                      }
+
+                      return (
+                        <tr key={date}>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontWeight: 600 }}>{date}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontWeight: 600, textAlign: 'center' }}>{count}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(0)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(1)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(3)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(7)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(15)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(30)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )
+            })()}
+          </div>
+        )}
         <table className="vocabulary-table">
           <thead>
             <tr>
-              <th>LEVEL</th>
-              <th>WORD</th>
-              <th>AUDIO</th>
+              <th>Level</th>
+              <th>Word</th>
+              <th>Audio</th>
               <th>POS</th>
-              <th>PHONETIC</th>
-              <th>DEFINITION</th>
-              <th>EXAMPLE</th>
-              <th>IMAGE</th>
+              <th>Phonetic</th>
+              <th>Definition</th>
+              <th>Example</th>
+              <th>Image</th>
               <th>Dialogue</th>
               <th>X</th>
-              <th>SHARE</th>
+              <th>Share</th>
             </tr>
           </thead>
           <tbody>
             {paginatedWords.map((word) => {
+              const isRevealed = revealedReviewIds.has(word.id)
+              const hideFields = isReviewMode && !isRevealed
+              const toggleReveal = () => {
+                setRevealedReviewIds(prev => {
+                  const next = new Set(prev)
+                  if (next.has(word.id)) next.delete(word.id)
+                  else next.add(word.id)
+                  return next
+                })
+              }
               return (
                 <tr key={word.id}>
                   <td>
@@ -1174,7 +1383,17 @@ function App() {
                   </td>
                   <td>
                     {word.pos && word.pos.trim() ? (
-                      <span className="pos-badge">{word.pos}</span>
+                      hideFields ? (
+                        <button
+                          className="grok-button"
+                          style={{ backgroundColor: isRevealed ? '#10b981' : '#3b82f6', width: '100%' }}
+                          onClick={toggleReveal}
+                        >
+                          {isRevealed ? 'Hide' : 'Recall'}
+                        </button>
+                      ) : (
+                        <span className="pos-badge">{word.pos}</span>
+                      )
                     ) : (
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <button
@@ -1212,15 +1431,26 @@ function App() {
                             }}
                             style={{ backgroundColor: 'transparent', color: '#10b981' }}
                           >
-                            ✓
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M13.333 4L6 11.333 2.667 8" />
+                            </svg>
                           </button>
                         )}
                       </div>
                     )}
                   </td>
-                  <td>{word.phonetic}</td>
+                  <td>{hideFields ? '' : word.phonetic}</td>
                   <td>
-                    {word.definition && word.definition.trim() ? (
+                    {!hideFields && word.definition && word.definition.trim() ? (
                       <div className="definition-content">
                         {word.definition.split('\n').map((line, index) => (
                           <div key={index}>{line}</div>
@@ -1231,7 +1461,9 @@ function App() {
                     )}
                   </td>
                   <td>
-                    {loadingExampleId === word.id ? (
+                    {hideFields ? (
+                      ''
+                    ) : loadingExampleId === word.id ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#6b7280' }}>
                         <svg
                           width="16"
@@ -1258,7 +1490,7 @@ function App() {
                     )}
                   </td>
                   <td>
-                    {word.example && word.example.trim() ? (
+                    {!hideFields && word.example && word.example.trim() ? (
                       word.imageUrl ? (
                         <img
                           src={word.imageUrl}
@@ -1551,128 +1783,12 @@ function App() {
         </div>
       </footer>
 
-      {showProgressModal && (
-        <div className="modal-overlay" onClick={() => setShowProgressModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '560px' }}>
-            <div className="modal-header">
-              <div className="modal-header-left">
-                <h2>Rewards</h2>
-              </div>
-              <button
-                className="modal-close-button"
-                onClick={() => setShowProgressModal(false)}
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M15 5L5 15M5 5l10 10" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="modal-body">
-              {(() => {
-                const grokkedWords = words.filter(w => w.definition && w.definition.trim().length > 0)
-                const grokkedWordsCount = grokkedWords.length
-                const progress = Math.min((grokkedWordsCount / 1000) * 100, 100)
-
-                const countsByDate = grokkedWords.reduce<Record<string, number>>((acc, w) => {
-                  const dateKey = w.grokkedAt
-                    ? w.grokkedAt.slice(0, 10).replace(/-/g, '/')
-                    : 'Unknown'
-                  acc[dateKey] = (acc[dateKey] || 0) + 1
-                  return acc
-                }, {})
-
-                const sortedDateEntries = Object.entries(countsByDate).sort((a, b) => {
-                  // Push "Unknown" to the end, otherwise sort descending by date string
-                  if (a[0] === 'Unknown') return 1
-                  if (b[0] === 'Unknown') return -1
-                  return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0
-                })
-                
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontWeight: '700', color: '#111827' }}>
-                      <span style={{ fontSize: '1.25rem' }}>Total Grokked Words</span>
-                      <span style={{ fontSize: '3.5rem' }}>{grokkedWordsCount}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>
-                        Progress ({Math.round(progress)}% of 1000)
-                      </div>
-                      <div style={{ 
-                        width: '100%', 
-                        height: '32px', 
-                        backgroundColor: '#e5e7eb', 
-                        borderRadius: '16px',
-                        overflow: 'hidden',
-                        position: 'relative'
-                      }}>
-                        <div style={{
-                          width: `${progress}%`,
-                          height: '100%',
-                          backgroundColor: '#3b82f6',
-                          borderRadius: '16px',
-                          transition: 'width 0.3s ease',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'white',
-                          fontWeight: '600',
-                          fontSize: '0.875rem'
-                        }}>
-                          {progress >= 10 ? `${Math.round(progress)}%` : ''}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                      {progress < 100 ? `${1000 - grokkedWordsCount} words remaining` : 'Congratulations! You\'ve grokked 1000 words!'}
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '0.75rem 1rem', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px dashed #d1d5db' }}>
-                      <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>Rewards</div>
-                      <div style={{ color: '#6b7280', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                        <span>• Grok 100 words to unlock an exciting reward!</span>
-                        <span>• Grok 1,000 words... and who knows? Elon might just owe you a reward! 🎁</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.5rem' }}>Records</div>
-                      {sortedDateEntries.length === 0 ? (
-                        <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No grokked words yet.</div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: '0.4rem', columnGap: '1rem', fontSize: '0.95rem' }}>
-                          {sortedDateEntries.map(([date, count]) => (
-                            <Fragment key={date}>
-                              <span style={{ color: '#111827' }}>{date}</span>
-                              <span style={{ color: '#111827', fontWeight: 600, textAlign: 'right' }}>{count}</span>
-                            </Fragment>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
       {showConfirmDialog && (
         <div className="modal-overlay" onClick={() => setShowConfirmDialog(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <div className="modal-header">
               <div className="modal-header-left">
-                <h2>Confirm Understanding</h2>
+                <h3>Confirm Understanding</h3>
               </div>
               <button
                 className="modal-close-button"
@@ -1696,7 +1812,7 @@ function App() {
             </div>
 
             <div className="modal-body">
-              <div style={{ padding: '1rem', textAlign: 'center' }}>
+              <div style={{ padding: '0.5rem', textAlign: 'center' }}>
                 <p style={{ fontSize: '1.125rem', color: '#111827', marginBottom: '1.5rem' }}>
                   Do you really understand this word - <strong>{confirmWordName}</strong>?
                 </p>
@@ -1708,7 +1824,7 @@ function App() {
                         handleNoPOS(confirmWordId)
                       }
                     }}
-                    style={{ backgroundColor: '#10b981', minWidth: '100px' }}
+                    style={{ backgroundColor: '#10b981', minWidth: '100px', height: '125%' }}
                   >
                     Yes
                   </button>
@@ -1719,7 +1835,7 @@ function App() {
                       setConfirmWordId(null)
                       setConfirmWordName('')
                     }}
-                    style={{ backgroundColor: '#6b7280', minWidth: '100px' }}
+                    style={{ backgroundColor: '#6b7280', minWidth: '100px', height: '125%' }}
                   >
                     Cancel
                   </button>
