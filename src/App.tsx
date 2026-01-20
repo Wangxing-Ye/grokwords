@@ -17,6 +17,12 @@ interface Word {
   ielts?: string
 }
 
+interface ReviewRecord {
+  word: string
+  day: number
+  date: string
+}
+
 const levels = [
   { value: 'all', label: 'All' },
   { value: '1', label: 'Level 1 (Basic)' },
@@ -61,7 +67,9 @@ function App() {
   const [isRecording, setIsRecording] = useState(false)
   const [showReviewList, setShowReviewList] = useState(false)
   const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null)
+  const [selectedReviewDay, setSelectedReviewDay] = useState<number | null>(null)
   const [revealedReviewIds, setRevealedReviewIds] = useState<Set<number>>(new Set())
+  const [reviewRecords, setReviewRecords] = useState<ReviewRecord[]>([])
   const [loadingExampleId, setLoadingExampleId] = useState<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioQueueRef = useRef<Float32Array[]>([])
@@ -79,7 +87,7 @@ function App() {
         return
       }
 
-      const request = indexedDB.open('GrokWordsDB', 1)
+      const request = indexedDB.open('GrokWordsDB', 2)
 
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {
@@ -92,6 +100,12 @@ function App() {
         if (!db.objectStoreNames.contains('words')) {
           const objectStore = db.createObjectStore('words', { keyPath: 'id' })
           objectStore.createIndex('word', 'word', { unique: false })
+        }
+        if (!db.objectStoreNames.contains('reviews')) {
+          const reviewsStore = db.createObjectStore('reviews', { keyPath: 'word' })
+          reviewsStore.createIndex('word', 'word', { unique: true })
+          reviewsStore.createIndex('day', 'day', { unique: false })
+          reviewsStore.createIndex('date', 'date', { unique: false })
         }
       }
     })
@@ -124,6 +138,35 @@ function App() {
     }
   }
 
+  // Save review to IndexedDB (dedup by word)
+  const saveReviewToDB = async (word: string, day: number, date: string) => {
+    try {
+      const db = await initDB()
+      const transaction = db.transaction(['reviews'], 'readwrite')
+      const store = transaction.objectStore('reviews')
+      const existingRequest = store.get(word)
+      await new Promise<void>((resolve, reject) => {
+        existingRequest.onsuccess = () => {
+          const existing = existingRequest.result
+          const record = existing
+            ? { ...existing, day, date }
+            : { word, day, date }
+          const putRequest = store.put(record)
+          putRequest.onsuccess = () => resolve()
+          putRequest.onerror = () => reject(putRequest.error)
+        }
+        existingRequest.onerror = () => reject(existingRequest.error)
+      })
+      // Update in-memory state
+      setReviewRecords(prev => {
+        const filtered = prev.filter(r => r.word !== word)
+        return [...filtered, { word, day, date }]
+      })
+    } catch (error) {
+      console.error('Error saving review to IndexedDB:', error)
+    }
+  }
+
   // Load all words from IndexedDB
   const loadWordsFromDB = async (): Promise<Word[]> => {
     try {
@@ -138,6 +181,22 @@ function App() {
       })
     } catch (error) {
       console.error('Error loading words from IndexedDB:', error)
+      return []
+    }
+  }
+
+  const loadReviewsFromDB = async (): Promise<ReviewRecord[]> => {
+    try {
+      const db = await initDB()
+      const transaction = db.transaction(['reviews'], 'readonly')
+      const store = transaction.objectStore('reviews')
+      return new Promise((resolve, reject) => {
+        const request = store.getAll()
+        request.onsuccess = () => resolve(request.result || [])
+        request.onerror = () => reject(request.error)
+      })
+    } catch (error) {
+      console.error('Error loading reviews from IndexedDB:', error)
       return []
     }
   }
@@ -322,6 +381,10 @@ function App() {
     }
 
     loadAllData()
+    ;(async () => {
+      const reviews = await loadReviewsFromDB()
+      setReviewRecords(reviews)
+    })()
   }, [])
 
   // Load settings from localStorage on mount
@@ -689,8 +752,15 @@ function App() {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('API Error:', errorText)
-        const sentences = errorText.split('.').map(s => s.trim()).filter(Boolean)
-        const reason = sentences.length >= 2 ? sentences[1] : errorText
+        let reason = errorText
+        try {
+          const parsed = JSON.parse(errorText)
+          if (parsed?.error) reason = parsed.error
+        } catch {
+          // Fallback to existing logic if not JSON
+          const sentences = errorText.split('.').map(s => s.trim()).filter(Boolean)
+          reason = sentences.length >= 2 ? sentences[1] : errorText
+        }
         throw new Error(`Failed to fetch word info - ${reason}`)
       }
 
@@ -979,6 +1049,7 @@ function App() {
   useEffect(() => {
     if (!showReviewList) {
       setSelectedReviewDate(null)
+      setSelectedReviewDay(null)
       setRevealedReviewIds(new Set())
     }
   }, [showReviewList])
@@ -1242,7 +1313,7 @@ function App() {
 
       <main className="main-content">
         {showReviewList && (
-          <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+          <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'linear-gradient(135deg, #fef9c3, #fde68a)', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
             <div style={{ fontWeight: 700, color: '#111827', marginBottom: '0.75rem', fontSize: '1.05rem', textAlign: 'center' }}>
               Golden Review Time Points by Ebbinghaus
             </div>
@@ -1263,27 +1334,30 @@ function App() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Date</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Grokked Words</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 0</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 1</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 3</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 7</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 15</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#374151' }}>Day 30</th>
+                      <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Date</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Grokked Words</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 0</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 1</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 3</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 7</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 15</th>
+                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 30</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sorted.map(([date, count]) => {
                       const daysSince = getDaysSince(date)
-                      const handleSelectDate = () => {
+                      const handleSelectDate = (day: number) => {
                         const nextDate = selectedReviewDate === date ? null : date
                         setSelectedReviewDate(nextDate)
+                        setSelectedReviewDay(nextDate ? day : null)
                         setRevealedReviewIds(new Set())
                       }
                       const renderIconFor = (target: number) => {
                         const isDue = renderReviewIcon(daysSince, target)
+                        const reviewedCount = reviewRecords.filter(r => r.date === date && r.day === target).length
                         const isActive = selectedReviewDate === date && isDue
+                        const allReviewed = reviewedCount === count
                         const baseStyle = {
                           textAlign: 'center' as const,
                           cursor: isDue ? 'pointer' : 'default',
@@ -1294,28 +1368,28 @@ function App() {
                           height: '22px',
                           border: isDue ? '1px solid #d1d5db' : '1px solid transparent',
                           borderRadius: '4px',
-                          backgroundColor: isActive ? '#3b82f6' : 'transparent',
-                          color: isActive ? '#ffffff' : '#111827',
+                          backgroundColor: allReviewed ? '#10b981' : isActive ? '#3b82f6' : 'transparent',
+                          color: allReviewed || isActive ? '#ffffff' : '#111827',
                           transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease',
                         }
                         return (
                           <span
                             style={baseStyle}
-                            onClick={isDue ? handleSelectDate : undefined}
+                            onClick={isDue ? () => handleSelectDate(target) : undefined}
                           />
                         )
                       }
 
                       return (
                         <tr key={date}>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontWeight: 600 }}>{date}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827', fontWeight: 600, textAlign: 'center' }}>{count}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(0)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(1)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(3)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(7)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(15)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>{renderIconFor(30)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#111827', fontWeight: 600 }}>{date}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#111827', fontWeight: 600, textAlign: 'center' }}>{count}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(0)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(1)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(3)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(7)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(15)}</td>
+                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(30)}</td>
                         </tr>
                       )
                     })}
@@ -1352,6 +1426,13 @@ function App() {
                   else next.add(word.id)
                   return next
                 })
+
+                const reviewDay = selectedReviewDay
+                const reviewDate =
+                  word.grokkedAt?.slice(0, 10).replace(/-/g, '/') || selectedReviewDate || ''
+                if (!isRevealed && isReviewMode && reviewDay !== null && reviewDate) {
+                  void saveReviewToDB(word.word, reviewDay, reviewDate)
+                }
               }
               return (
                 <tr key={word.id}>
@@ -1386,10 +1467,10 @@ function App() {
                       hideFields ? (
                         <button
                           className="grok-button"
-                          style={{ backgroundColor: isRevealed ? '#10b981' : '#3b82f6', width: '100%' }}
+                          style={{ backgroundColor: isRevealed ? '#10b981' : '#3b82f6', width: 'auto', minWidth: '90px' }}
                           onClick={toggleReveal}
                         >
-                          {isRevealed ? 'Hide' : 'Recall'}
+                          {isRevealed ? 'Hide' : 'Review'}
                         </button>
                       ) : (
                         <span className="pos-badge">{word.pos}</span>
@@ -1848,7 +1929,11 @@ function App() {
 
       {isSettingsOpen && (
         <div className="modal-overlay" onClick={() => setIsSettingsOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '720px', padding: '0 1.5rem 1.5rem' }}
+          >
             <div className="modal-header">
               <div className="modal-header-left">
                 <h2>Settings</h2>
