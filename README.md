@@ -39,6 +39,10 @@ CEFR divides English proficiency into six levels: A1 to C2. In this project they
 | C1         | 7.0–8.0    | 95–120              |
 | C2         | 8.5–9.0    | 114+                |
 
+## Ebbinghaus
+- Ebbinghaus turned memory from a mysterious philosophical topic into a measurable, predictable phenomenon. 
+- Golden review points: Day 0, 1, 3, 7, 15, 30 aligned with the forgetting curve.
+
 ## xAI API
 Note: Each user needs their own xAI API key to run this project (frontend-only; no backend; no user data is saved).
 - Get an API key: https://accounts.x.ai/sign-in?redirect=cloud-console
@@ -49,15 +53,15 @@ Note: Each user needs their own xAI API key to run this project (frontend-only; 
   - Grok Voice Agent: https://docs.x.ai/docs/guides/voice/agent
 
 ## Features
-- No backend: This project only has the front end and does not include a backend.
-- Storage: settings, words and updates are saved locally.
 - Word list: loads from `public/words/ENGLISH_CERF_WORDS_EXTENDED.csv` with CEFR levels and TOEFL & IELTS tags.
+- Ebbinghaus-based review schedule with golden review points.
 - Grok details: fetch POS, phonetic, definition, and translation via xAI chat API.
 - Native language support for translations: العربية (Arabic), বাংলা (Bengali), 简体中文 (Simplified Chinese), 繁體中文 (Traditional Chinese), Français (French), Deutsch (German), हिंदी (Hindi), Bahasa Indonesia (Indonesian), Italiano (Italian), 日本語 (Japanese), 한국어 (Korean), Bahasa Melayu (Malay), Português (Portuguese), فارسی (Persian / Iranian), Русский (Russian), Español (Spanish), ไทย (Thai), Türkçe (Turkish), Tiếng Việt (Vietnamese).
 - Auto examples: generates English + native translation + keyword hints; shows a spinner while generating.
 - Images: one-click illustration generation; regenerate and download (note: images available ~24h).
 - Voice: connect, speak, and practice with Grok Voice Agent; shows connection/status messages.
-- Progress & rewards: medal modal with totals, percentage to 1000, and reward milestones (100 and 1,000 words); grokked-at timestamps stored.
+- No backend: This project only has the front end and does not include a backend.
+- Storage: settings, words and updates are saved locally.
 
 ## Prerequisites
 - Node.js 18+
