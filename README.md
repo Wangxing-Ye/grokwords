@@ -89,7 +89,7 @@ npm run lint     # eslint
 
 ## Next Steps
 - Continue building with xAI upcoming TTS and Video Generation API.
-- Design a token incentive program for the rewards.
+- Design a token incentive program.
 
 ## License
 
