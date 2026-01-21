@@ -84,8 +84,8 @@ npm run lint     # eslint
 1) Open the app and set your **xAI API key** and **native language** in Settings (English is disallowed as the native language for translations).  
 2) Select a word and click **Grok** to fetch POS/definition/translation. The app auto-generates an example and keywords.  
 3) Generate an **image** for the word; you can regenerate or download it (download within 24h).  
-4) Use the **voice** modal to practice speaking.  
-5) Open **Rewards** (medal icon) to view total grokked words, progress to 1000, date counts, and reward milestones.
+4) Use the **voice** button to practice speaking with Grok voice agent.  
+5) Tap the **Review** icon (face) to view your Ebbinghaus spaced repetition schedule with the golden review points.
 
 ## Next Steps
 - Continue building with xAI upcoming TTS and Video Generation API.
