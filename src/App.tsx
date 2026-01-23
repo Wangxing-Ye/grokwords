@@ -1,27 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
-
-interface Word {
-  id: number
-  word: string
-  level: number
-  levelLabel: string
-  pos: string
-  phonetic: string
-  definition: string
-  example: string
-  revealed: boolean
-  imageUrl?: string
-  grokkedAt?: string
-  toefl?: string
-  ielts?: string
-}
-
-interface ReviewRecord {
-  word: string
-  day: number
-  date: string
-}
+import type { Word, ReviewRecord } from './types'
+import Review from './pages/Review'
 
 const levels = [
   { value: 'all', label: 'All' },
@@ -65,11 +45,8 @@ function App() {
   const [isVoiceConnected, setIsVoiceConnected] = useState(false)
   const [voiceMessages, setVoiceMessages] = useState<string[]>([])
   const [isRecording, setIsRecording] = useState(false)
-  const [showReviewList, setShowReviewList] = useState(false)
-  const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null)
-  const [selectedReviewDay, setSelectedReviewDay] = useState<number | null>(null)
-  const [revealedReviewIds, setRevealedReviewIds] = useState<Set<number>>(new Set())
   const [reviewRecords, setReviewRecords] = useState<ReviewRecord[]>([])
+  const isReviewPage = typeof window !== 'undefined' && window.location.pathname === '/review'
   const [loadingExampleId, setLoadingExampleId] = useState<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioQueueRef = useRef<Float32Array[]>([])
@@ -87,7 +64,7 @@ function App() {
         return
       }
 
-      const request = indexedDB.open('GrokWordsDB', 2)
+      const request = indexedDB.open('GrokWordsDB', 3)
 
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {
@@ -101,12 +78,13 @@ function App() {
           const objectStore = db.createObjectStore('words', { keyPath: 'id' })
           objectStore.createIndex('word', 'word', { unique: false })
         }
-        if (!db.objectStoreNames.contains('reviews')) {
-          const reviewsStore = db.createObjectStore('reviews', { keyPath: 'word' })
-          reviewsStore.createIndex('word', 'word', { unique: true })
-          reviewsStore.createIndex('day', 'day', { unique: false })
-          reviewsStore.createIndex('date', 'date', { unique: false })
+        if (db.objectStoreNames.contains('reviews')) {
+          db.deleteObjectStore('reviews')
         }
+        const reviewsStore = db.createObjectStore('reviews', { keyPath: ['word', 'day'] })
+        reviewsStore.createIndex('word', 'word', { unique: false })
+        reviewsStore.createIndex('day', 'day', { unique: false })
+        reviewsStore.createIndex('date', 'date', { unique: false })
       }
     })
   }
@@ -141,16 +119,25 @@ function App() {
   // Save review to IndexedDB (dedup by word)
   const saveReviewToDB = async (word: string, day: number, date: string) => {
     try {
+      const rewardByDay: Record<number, number> = {
+        0: 30,
+        1: 40,
+        3: 50,
+        7: 60,
+        15: 70,
+        30: 80,
+      }
+      const reward = rewardByDay[day] ?? 0
       const db = await initDB()
       const transaction = db.transaction(['reviews'], 'readwrite')
       const store = transaction.objectStore('reviews')
-      const existingRequest = store.get(word)
+      const existingRequest = store.get([word, day])
       await new Promise<void>((resolve, reject) => {
         existingRequest.onsuccess = () => {
           const existing = existingRequest.result
           const record = existing
-            ? { ...existing, day, date }
-            : { word, day, date }
+            ? { ...existing, day, date, reward }
+            : { word, day, date, reward }
           const putRequest = store.put(record)
           putRequest.onsuccess = () => resolve()
           putRequest.onerror = () => reject(putRequest.error)
@@ -159,8 +146,8 @@ function App() {
       })
       // Update in-memory state
       setReviewRecords(prev => {
-        const filtered = prev.filter(r => r.word !== word)
-        return [...filtered, { word, day, date }]
+        const filtered = prev.filter(r => !(r.word === word && r.day === day))
+        return [...filtered, { word, day, date, reward }]
       })
     } catch (error) {
       console.error('Error saving review to IndexedDB:', error)
@@ -1036,28 +1023,13 @@ function App() {
       searchQuery === '' ||
       word.word.toLowerCase().startsWith(searchQuery.toLowerCase())
 
-    const reviewDateMatch =
-      !selectedReviewDate ||
-      (word.grokkedAt && word.grokkedAt.slice(0, 10).replace(/-/g, '/') === selectedReviewDate)
-
-    return levelMatch && grokStatusMatch && searchMatch && reviewDateMatch
+    return levelMatch && grokStatusMatch && searchMatch
   })
-
-  const isReviewMode = !!selectedReviewDate
-
-  // Reset review reveals when toggling review list off
-  useEffect(() => {
-    if (!showReviewList) {
-      setSelectedReviewDate(null)
-      setSelectedReviewDay(null)
-      setRevealedReviewIds(new Set())
-    }
-  }, [showReviewList])
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedLevel, selectedGrokStatus, searchQuery, selectedReviewDate])
+  }, [selectedLevel, selectedGrokStatus, searchQuery])
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredWords.length / itemsPerPage)
@@ -1091,17 +1063,29 @@ function App() {
     }
   }
 
-  const getDaysSince = (dateStr: string): number | null => {
-    const parsed = Date.parse(dateStr.replace(/\//g, '-'))
-    if (Number.isNaN(parsed)) return null
-    const diffMs = Date.now() - parsed
-    return Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (isReviewPage) {
+    return (
+      <div className="app">
+        <header className="header">
+          <div className="header-left" style={{ gap: '0.5rem' }}>
+            <button
+              className="grok-button"
+              onClick={() => (window.location.href = '/')}
+              style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
+            >
+              ← Back
+            </button>
+            <div className="logo-text" style={{ fontWeight: 700, fontSize: '1.1rem' }}>
+              Review & Remember
+            </div>
+          </div>
+        </header>
+        <main className="main-content">
+          <Review words={words} reviewRecords={reviewRecords} saveReviewToDB={saveReviewToDB} />
+        </main>
+      </div>
+    )
   }
-
-  const renderReviewIcon = (daysSince: number | null, target: number) => {
-    return daysSince === target
-  }
-
 
   return (
     <div className="app">
@@ -1271,7 +1255,7 @@ function App() {
             className="settings-button"
             title="Review & Remember"
             onClick={() => {
-              setShowReviewList(prev => !prev)
+              window.location.href = '/review'
             }}
           >
             <svg
@@ -1312,93 +1296,6 @@ function App() {
       </header>
 
       <main className="main-content">
-        {showReviewList && (
-          <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'linear-gradient(135deg, #fef9c3, #fde68a)', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-            <div style={{ fontWeight: 700, color: '#111827', marginBottom: '0.75rem', fontSize: '1.05rem', textAlign: 'center' }}>
-              Golden Review Time Points by Ebbinghaus
-            </div>
-            {(() => {
-              const grokkedWords = words.filter(w => w.definition && w.definition.trim().length > 0 && w.grokkedAt)
-              const countsByDate = grokkedWords.reduce<Record<string, number>>((acc, w) => {
-                const dateKey = w.grokkedAt!.slice(0, 10).replace(/-/g, '/')
-                acc[dateKey] = (acc[dateKey] || 0) + 1
-                return acc
-              }, {})
-              const sorted = Object.entries(countsByDate).sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
-
-              if (sorted.length === 0) {
-                return <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>No grokked words yet.</div>
-              }
-
-              return (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Date</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Grokked Words</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 0</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 1</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 3</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 7</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 15</th>
-                      <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 30</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map(([date, count]) => {
-                      const daysSince = getDaysSince(date)
-                      const handleSelectDate = (day: number) => {
-                        const nextDate = selectedReviewDate === date ? null : date
-                        setSelectedReviewDate(nextDate)
-                        setSelectedReviewDay(nextDate ? day : null)
-                        setRevealedReviewIds(new Set())
-                      }
-                      const renderIconFor = (target: number) => {
-                        const isDue = renderReviewIcon(daysSince, target)
-                        const reviewedCount = reviewRecords.filter(r => r.date === date && r.day === target).length
-                        const isActive = selectedReviewDate === date && isDue
-                        const allReviewed = reviewedCount === count
-                        const baseStyle = {
-                          textAlign: 'center' as const,
-                          cursor: isDue ? 'pointer' : 'default',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '22px',
-                          height: '22px',
-                          border: isDue ? '1px solid #d1d5db' : '1px solid transparent',
-                          borderRadius: '4px',
-                          backgroundColor: allReviewed ? '#10b981' : isActive ? '#3b82f6' : 'transparent',
-                          color: allReviewed || isActive ? '#ffffff' : '#111827',
-                          transition: 'background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease',
-                        }
-                        return (
-                          <span
-                            style={baseStyle}
-                            onClick={isDue ? () => handleSelectDate(target) : undefined}
-                          />
-                        )
-                      }
-
-                      return (
-                        <tr key={date}>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#111827', fontWeight: 600 }}>{date}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#111827', fontWeight: 600, textAlign: 'center' }}>{count}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(0)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(1)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(3)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(7)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(15)}</td>
-                          <td style={{ padding: '6px 4px', borderBottom: '1px solid #ffffff', textAlign: 'center' }}>{renderIconFor(30)}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )
-            })()}
-          </div>
-        )}
         <table className="vocabulary-table">
           <thead>
             <tr>
@@ -1417,23 +1314,6 @@ function App() {
           </thead>
           <tbody>
             {paginatedWords.map((word) => {
-              const isRevealed = revealedReviewIds.has(word.id)
-              const hideFields = isReviewMode && !isRevealed
-              const toggleReveal = () => {
-                setRevealedReviewIds(prev => {
-                  const next = new Set(prev)
-                  if (next.has(word.id)) next.delete(word.id)
-                  else next.add(word.id)
-                  return next
-                })
-
-                const reviewDay = selectedReviewDay
-                const reviewDate =
-                  word.grokkedAt?.slice(0, 10).replace(/-/g, '/') || selectedReviewDate || ''
-                if (!isRevealed && isReviewMode && reviewDay !== null && reviewDate) {
-                  void saveReviewToDB(word.word, reviewDay, reviewDate)
-                }
-              }
               return (
                 <tr key={word.id}>
                   <td>
@@ -1464,17 +1344,7 @@ function App() {
                   </td>
                   <td>
                     {word.pos && word.pos.trim() ? (
-                      hideFields ? (
-                        <button
-                          className="grok-button"
-                          style={{ backgroundColor: isRevealed ? '#10b981' : '#3b82f6', width: 'auto', minWidth: '90px' }}
-                          onClick={toggleReveal}
-                        >
-                          {isRevealed ? 'Hide' : 'Review'}
-                        </button>
-                      ) : (
-                        <span className="pos-badge">{word.pos}</span>
-                      )
+                      <span className="pos-badge">{word.pos}</span>
                     ) : (
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <button
@@ -1529,9 +1399,9 @@ function App() {
                       </div>
                     )}
                   </td>
-                  <td>{hideFields ? '' : word.phonetic}</td>
+                  <td>{word.phonetic}</td>
                   <td>
-                    {!hideFields && word.definition && word.definition.trim() ? (
+                    {word.definition && word.definition.trim() ? (
                       <div className="definition-content">
                         {word.definition.split('\n').map((line, index) => (
                           <div key={index}>{line}</div>
@@ -1542,9 +1412,7 @@ function App() {
                     )}
                   </td>
                   <td>
-                    {hideFields ? (
-                      ''
-                    ) : loadingExampleId === word.id ? (
+                    {loadingExampleId === word.id ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#6b7280' }}>
                         <svg
                           width="16"
@@ -1571,8 +1439,7 @@ function App() {
                     )}
                   </td>
                   <td>
-                    {!hideFields && word.example && word.example.trim() ? (
-                      word.imageUrl ? (
+                    {word.imageUrl ? (
                         <img
                           src={word.imageUrl}
                           alt={`Illustration for ${word.word}`}
@@ -1584,7 +1451,7 @@ function App() {
                             setShowImageModal(true)
                           }}
                         />
-                      ) : (
+                    ) : word.example && word.example.trim() ? (
                         <button
                           className="image-button"
                           title="Generate image"
@@ -1615,13 +1482,12 @@ function App() {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             >
-                              <path d="M3 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                            <path d="M3 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
                               <circle cx="7" cy="7" r="1.5" />
-                              <path d="M3 13l3-3 2 2 3-3 4 4" />
+                            <path d="M3 13l3-3 2 2 3-3 4 4" />
                             </svg>
                           )}
                         </button>
-                      )
                     ) : (
                       ''
                     )}
@@ -1795,62 +1661,62 @@ function App() {
           borderTop: '1px solid #e5e7eb'
         }}>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', justifyContent: 'center' }}>
-            <a
-              href="https://github.com/Wangxing-Ye/grokwords"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                color: '#6b7280',
-                textDecoration: 'none',
-                transition: 'color 0.15s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
-            >
-              <svg
-                width="25"
-                height="25"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                style={{ marginRight: '0.5rem' }}
-              >
-                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-              </svg>
-            </a>
-            <a
-              href="https://x.com/wilsonye2025"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                color: '#6b7280',
-                textDecoration: 'none',
-                transition: 'color 0.15s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
-            >
-              <svg
-                width="25"
-                height="25"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                style={{ marginRight: '0.5rem' }}
-              >
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-              </svg>
-            </a>
-          </div>
           <a
-            href="/privacy.html"
+            href="https://github.com/Wangxing-Ye/grokwords"
             target="_blank"
             rel="noopener noreferrer"
             style={{
               display: 'flex',
               alignItems: 'center',
+              color: '#6b7280',
+              textDecoration: 'none',
+              transition: 'color 0.15s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+          >
+            <svg
+                width="25"
+                height="25"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ marginRight: '0.5rem' }}
+            >
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+          </a>
+          <a
+            href="https://x.com/wilsonye2025"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              color: '#6b7280',
+              textDecoration: 'none',
+              transition: 'color 0.15s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#111827'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+          >
+            <svg
+                width="25"
+                height="25"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ marginRight: '0.5rem' }}
+            >
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </a>
+        </div>
+          <a
+            href="/privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+                          display: 'flex',
+                          alignItems: 'center',
               color: '#6b7280',
               textDecoration: 'none',
               transition: 'color 0.15s',
@@ -1861,7 +1727,7 @@ function App() {
           >
             Privacy Policy
           </a>
-        </div>
+                        </div>
       </footer>
 
       {showConfirmDialog && (
@@ -2269,8 +2135,8 @@ function App() {
 
       {showVoiceModal && (
         <div className="modal-overlay" onClick={() => setShowVoiceModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
-              <div className="modal-header">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div className="modal-header">
                 <div className="modal-header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <svg
                     width="22"
@@ -2287,40 +2153,40 @@ function App() {
                     <path d="M5.5 21c0-3.5 3-6.5 6.5-6.5S18.5 17.5 18.5 21" />
                     <path d="M9 6.5c0-1.38.9-2.5 2.5-2.5 1.6 0 2.5 1.12 2.5 2.5" />
                   </svg>
-                  <h2>Dialogue Practice: {currentVoiceWord}</h2>
-                </div>
-                <button
-                  className="modal-close-button"
-                  onClick={() => {
-                    if (voiceWs) {
-                      voiceWs.close()
-                      setVoiceWs(null)
-                    }
-                    if (microphoneStreamRef.current) {
-                      microphoneStreamRef.current.getTracks().forEach(track => track.stop())
-                      microphoneStreamRef.current = null
-                    }
-                    if (audioProcessorRef.current) {
-                      audioProcessorRef.current.disconnect()
-                      audioProcessorRef.current = null
-                    }
-                    setIsRecording(false)
-                    setShowVoiceModal(false)
-                    setVoiceMessages([])
-                  }}
-                >
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M15 5L5 15M5 5l10 10" />
-                  </svg>
-                </button>
+                <h2>Dialogue Practice: {currentVoiceWord}</h2>
               </div>
+              <button
+                className="modal-close-button"
+                onClick={() => {
+                  if (voiceWs) {
+                    voiceWs.close()
+                    setVoiceWs(null)
+                  }
+                  if (microphoneStreamRef.current) {
+                    microphoneStreamRef.current.getTracks().forEach(track => track.stop())
+                    microphoneStreamRef.current = null
+                  }
+                  if (audioProcessorRef.current) {
+                    audioProcessorRef.current.disconnect()
+                    audioProcessorRef.current = null
+                  }
+                  setIsRecording(false)
+                  setShowVoiceModal(false)
+                  setVoiceMessages([])
+                }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M15 5L5 15M5 5l10 10" />
+                </svg>
+              </button>
+            </div>
 
             <div className="modal-body">
               <div style={{ marginBottom: '1rem' }}>
