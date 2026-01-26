@@ -1064,6 +1064,7 @@ function App() {
   }
 
   if (isReviewPage) {
+    const totalRewards = reviewRecords.reduce((sum, r) => sum + (Number.isFinite(r.reward) ? r.reward : 0), 0)
     return (
       <div className="app">
         <header className="header">
@@ -1071,13 +1072,26 @@ function App() {
             <button
               className="grok-button"
               onClick={() => (window.location.href = '/')}
-              style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
+              style={{ backgroundColor: 'transparent', color: '#2563eb', borderColor: '#2563eb' }}
             >
               ← Back
             </button>
             <div className="logo-text" style={{ fontWeight: 700, fontSize: '1.1rem' }}>
-              Review & Remember
+            Ebbinghaus Review & Rewards
             </div>
+          </div>
+          <div
+            className="header-right"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#065f46' }}
+          >
+            <span>Total $GW: {totalRewards}</span>
+            <button
+              className="grok-button"
+              style={{ backgroundColor: '#10b981', borderColor: '#059669' }}
+              onClick={() => alert('Rewards claimed!')}
+            >
+              Claim
+            </button>
           </div>
         </header>
         <main className="main-content">
@@ -1253,7 +1267,7 @@ function App() {
           </div>
           <button
             className="settings-button"
-            title="Review & Remember"
+            title="Ebbinghaus Review & Rewards"
             onClick={() => {
               window.location.href = '/review'
             }}
@@ -1268,10 +1282,11 @@ function App() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <circle cx="12" cy="12" r="9" />
-              <path d="M9 10h.01" />
-              <path d="M15 10h.01" />
-              <path d="M9 15a4 4 0 0 0 6 0" />
+              <rect x="3" y="5" width="18" height="16" rx="2" ry="2" />
+              <line x1="16" y1="3" x2="16" y2="7" />
+              <line x1="8" y1="3" x2="8" y2="7" />
+              <line x1="3" y1="11" x2="21" y2="11" />
+              <path d="M9 16h6" />
             </svg>
           </button>
           <button

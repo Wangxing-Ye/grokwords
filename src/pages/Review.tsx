@@ -105,7 +105,7 @@ export default function Review({ words, reviewRecords, saveReviewToDB }: ReviewP
                 <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 7</th>
                 <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 15</th>
                 <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Day 30</th>
-                <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Rewards</th>
+                <th style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #ffffff', color: '#374151' }}>Rewards ($GW)</th>
               </tr>
             </thead>
             <tbody>
